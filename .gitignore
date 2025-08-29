@@ -1,0 +1,73 @@
+# Python bytecode and cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual Environment
+# This will ignore the 'env' directory you have in your project
+env/
+venv/
+.venv/
+
+# IDE and editor specific files
+# For Visual Studio Code
+.vscode/
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+*.egg
+
+# Operating System generated files
+# Windows
+Thumbs.db
+# macOS
+.DS_Store
+
+# Log files
+*.log
+
+# Environment variables
+# It's a good practice to not commit your .env files
+.env
+*.env
+
+# ----------------------------------------------------
+# ADD YOUR SPECIFIC FILES TO IGNORE BELOW THIS LINE
+# ----------------------------------------------------
+
+# Example 1: Ignoring specific files by their full path
+# This is often the safest way to avoid accidentally ignoring other files.
+
+static/scriptWorking.js
+static/styleWorking.css
+templates/indexWorking.html
+
+static/ScriptCompleteRoom.js
+static/styleCompleteRoom.css
+templates/indexCompleteRoom.html
+
+appCompleteRoom.py
+appGesture.py
+appGestureandButton.py
+appLatencyIssue.py
+appSensors.py
+appStateissue.py
+appVoice.py
+appWithoutSensorDisplay.py
+appWithSensorReadings.py
+FinalWorkingapp.py
+main.py
+
+# Example 2: Ignoring files by name only (will ignore any file with this name)
+# Use this if you have multiple files named 'debug.log' in different folders, for example.
+# debug.log
+
+# Example 3: Using wildcards to ignore files with a certain pattern
+# This would ignore any file ending with 'CompleteRoom.py'
+# *CompleteRoom.py
+
+# This would ignore any CSS file inside the 'static' directory that starts with 'style'
+# static/style*.css

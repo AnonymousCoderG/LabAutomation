@@ -1,9 +1,11 @@
+
+
+
+
 opencv-python
 mediapipe
 flask
 pyserial
 SpeechRecognition==3.9.0
 PyAudio==0.2.13
-
-
 gunicorn

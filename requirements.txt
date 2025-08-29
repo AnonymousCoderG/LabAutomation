@@ -1,6 +1,5 @@
-opencv-python
-mediapipe
 flask
 pyserial
 SpeechRecognition==3.9.0
 gunicorn
+requests

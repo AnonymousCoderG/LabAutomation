@@ -63,6 +63,10 @@ main.py
 requirements1.txt
 appBeforeDeployment.py
 static/scriptBeforeDeployment.js
+static/scriptdeployed.js
+templates/indexdeployed.html
+appdeployed.py
+requirementsdeployed.txt
 # Example 2: Ignoring files by name only (will ignore any file with this name)
 # Use this if you have multiple files named 'debug.log' in different folders, for example.
 # debug.log

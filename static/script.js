@@ -9,7 +9,6 @@ const leftPanel = document.querySelector(".left-panel");
 const unit = 1.75;
 let isRaining = false;
 
-// --- Elements for restored dance functionality ---
 const a = document.querySelector("#a");
 const block = document.querySelector("#block");
 const mirrorContent = document.querySelector('.mirror-content');
@@ -32,9 +31,7 @@ const moveFunc = (e) => {
 const mouseDownFunc = () => b.addEventListener("mousemove", moveFunc);
 const mouseUpFunc = () => b.removeEventListener("mousemove", moveFunc);
 
-// --- MODIFIED function for music, dance, and content toggle ---
 const playFunc = () => {
-	// Toggle the dance animation and music
 	h.classList.toggle("is-main-active");
 	a.loop = true;
 	if (a.paused) {
@@ -43,13 +40,10 @@ const playFunc = () => {
 		a.pause();
 		a.currentTime = 0;
 	}
-
-    // Toggle between sensor display and "Be Curious" message
     mirrorContent.classList.toggle('is-hidden');
     curiousContent.classList.toggle('is-hidden');
 };
 /*****************/
-// Attach listeners
 leftPanel.addEventListener("mousedown", mouseDownFunc);
 b.addEventListener("mouseup", mouseUpFunc);
 block.addEventListener("click", playFunc);
@@ -96,7 +90,6 @@ document.addEventListener('DOMContentLoaded', function() {
         fetch('/get_sensor_data')
             .then(response => response.json())
             .then(data => {
-                // --- Update Right Panel (Control Panel) ---
                 let rightPanelContent = '';
                 if (Object.keys(data).length === 0) {
                     rightPanelContent = '<p>No data received yet.</p>';
@@ -108,7 +101,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
                 sensorDataDiv.innerHTML = rightPanelContent;
 
-                // --- Update Left Panel (3D Mirror) ---
                 let mirrorContent = '';
                 if (Object.keys(data).length === 0) {
                     mirrorContent = '<p>Offline</p>';
@@ -121,23 +113,11 @@ document.addEventListener('DOMContentLoaded', function() {
                     mirrorContent += `<p>Rain: ${data.isRaining || 'N/A'}</p>`;
                     mirrorContent += `<p>Fire: ${data.fireDetected || 'N/A'}</p>`;
                     
-                    if (data.isRaining === 'Yes') {
-                        createRainEffect();
-                    } else {
-                        clearRainEffect();
-                    }
+                    if (data.isRaining === 'Yes') createRainEffect();
+                    else clearRainEffect();
                     
-                    if (data.temperature > 20 && data.isRaining !== 'Yes') {
-                         sunIcon.style.display = 'block';
-                    } else {
-                         sunIcon.style.display = 'none';
-                    }
-
-                    if (data.fireDetected === 'Yes') {
-                        fireIcon.style.display = 'block';
-                    } else {
-                        fireIcon.style.display = 'none';
-                    }
+                    sunIcon.style.display = (data.temperature > 20 && data.isRaining !== 'Yes') ? 'block' : 'none';
+                    fireIcon.style.display = (data.fireDetected === 'Yes') ? 'block' : 'none';
                 }
                 mirrorSensorDiv.innerHTML = mirrorContent;
             })
@@ -148,7 +128,7 @@ document.addEventListener('DOMContentLoaded', function() {
             });
     }
 
-    // --- Command and Voice Functions (unchanged) ---
+    // --- Manual Command Function ---
     function sendCommand(commandValue) {
         const formData = new FormData();
         formData.append('command', commandValue);
@@ -158,23 +138,127 @@ document.addEventListener('DOMContentLoaded', function() {
             .catch(error => console.error('Error sending command:', error));
     }
 
-    function startRecording() {
-        fetch('/start', { method: 'POST' })
-            .then(response => response.json())
-            .then(data => {
-                if(data.status === "Recording started") {
-                    voiceStatus.textContent = 'Status: Listening...';
+    // --- NEW VOICE CONTROL LOGIC WITH WAV ENCODING ---
+    let mediaRecorder;
+    let audioChunks = [];
+    let audioContext; // <-- To get the sample rate
+
+    // This function encodes the raw audio data into a valid WAV file format
+    function encodeWAV(samples, sampleRate) {
+        let buffer = new ArrayBuffer(44 + samples.length * 2);
+        let view = new DataView(buffer);
+
+        function writeString(view, offset, string) {
+            for (let i = 0; i < string.length; i++) {
+                view.setUint8(offset + i, string.charCodeAt(i));
+            }
+        }
+
+        writeString(view, 0, 'RIFF');
+        view.setUint32(4, 36 + samples.length * 2, true);
+        writeString(view, 8, 'WAVE');
+        writeString(view, 12, 'fmt ');
+        view.setUint32(16, 16, true);
+        view.setUint16(20, 1, true);
+        view.setUint16(22, 1, true); // Mono channel
+        view.setUint32(24, sampleRate, true);
+        view.setUint32(28, sampleRate * 2, true);
+        view.setUint16(32, 2, true);
+        view.setUint16(34, 16, true);
+        writeString(view, 36, 'data');
+        view.setUint32(40, samples.length * 2, true);
+
+        for (let i = 0; i < samples.length; i++) {
+            view.setInt16(44 + i * 2, samples[i] * 0x7FFF, true);
+        }
+
+        return new Blob([view], { type: 'audio/wav' });
+    }
+
+
+    async function startRecording() {
+        try {
+            audioChunks = []; // Clear previous recordings
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            
+            // We need AudioContext to process the raw audio data
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            const source = audioContext.createMediaStreamSource(stream);
+            const processor = audioContext.createScriptProcessor(4096, 1, 1);
+
+            processor.onaudioprocess = (e) => {
+                const inputData = e.inputBuffer.getChannelData(0);
+                // We store the raw float32 data
+                audioChunks.push(new Float32Array(inputData));
+            };
+
+            source.connect(processor);
+            processor.connect(audioContext.destination);
+
+            mediaRecorder = { // We create a mock recorder object
+                stream: stream,
+                stop: () => {
+                    source.disconnect();
+                    processor.disconnect();
+                    audioContext.close();
+                    
+                    // Combine all the Float32 arrays into one
+                    const fullBuffer = new Float32Array(audioChunks.reduce((acc, val) => acc + val.length, 0));
+                    let offset = 0;
+                    for(const chunk of audioChunks) {
+                        fullBuffer.set(chunk, offset);
+                        offset += chunk.length;
+                    }
+                    
+                    // Encode the combined buffer into a WAV blob
+                    const audioBlob = encodeWAV(fullBuffer, audioContext.sampleRate);
+                    sendAudioToServer(audioBlob);
+
+                    // Stop all microphone tracks to turn off the indicator
+                    stream.getTracks().forEach(track => track.stop());
                 }
-            });
+            };
+            
+            voiceStatus.textContent = 'Status: Listening...';
+            startRecordingButton.disabled = true;
+            stopRecordingButton.disabled = false;
+
+        } catch (err) {
+            console.error("Error accessing microphone:", err);
+            voiceStatus.textContent = 'Error: Could not access microphone.';
+        }
     }
 
     function stopRecording() {
-        voiceStatus.textContent = 'Status: Processing...';
-        fetch('/stop', { method: 'POST' })
-            .then(response => response.json())
-            .then(data => {
-                voiceStatus.textContent = `Recognized: ${data.text || 'Nothing'}`;
+        if (mediaRecorder) {
+            mediaRecorder.stop();
+            voiceStatus.textContent = 'Status: Processing...';
+            startRecordingButton.disabled = false;
+            stopRecordingButton.disabled = true;
+            mediaRecorder = null;
+        }
+    }
+
+    async function sendAudioToServer(audioBlob) {
+        const formData = new FormData();
+        formData.append('audio_data', audioBlob, 'recording.wav');
+
+        try {
+            const response = await fetch('/process_audio', {
+                method: 'POST',
+                body: formData
             });
+            const result = await response.json();
+
+            if (response.ok) {
+                voiceStatus.textContent = `Recognized: ${result.text}`;
+            } else {
+                voiceStatus.textContent = `Error: ${result.error}`;
+            }
+        } catch (err) {
+            console.error("Error sending audio to server:", err);
+            voiceStatus.textContent = 'Error: Failed to send audio.';
+        }
     }
 
     // --- Attach Event Listeners ---

@@ -242,11 +242,14 @@ import threading
 from flask_socketio import SocketIO
 import paho.mqtt.client as mqtt
 import speech_recognition as sr
+import time
+
+# --- Use eventlet for async operations, this is critical for production ---
+import eventlet
+eventlet.monkey_patch()
 
 app = Flask(__name__, template_folder="templates", static_folder="static")
-# Use the secret key for session management with SocketIO
 app.config['SECRET_KEY'] = 'your_very_secret_key' 
-# Wrap the app with SocketIO, using eventlet for async operations
 socketio = SocketIO(app, async_mode='eventlet')
 
 # ------------------- MQTT CONFIG -------------------
@@ -257,7 +260,10 @@ MQTT_PASSWORD = "LOF@123g"
 MQTT_COMMAND_TOPIC = "home/room/command"
 MQTT_SENSOR_TOPIC = "home/room/sensors"
 
-# --- Setup the MQTT Client ---
+# --- Setup the MQTT Client (now in a more robust way) ---
+mqtt_client = mqtt.Client()
+latest_sensor_data = {} # Initialize here
+
 def on_connect(client, userdata, flags, rc):
     if rc == 0:
         print("Connected to MQTT Broker!")
@@ -266,34 +272,44 @@ def on_connect(client, userdata, flags, rc):
         print(f"Failed to connect to MQTT, return code {rc}\n")
 
 def on_message(client, userdata, msg):
+    global latest_sensor_data
     payload = msg.payload.decode()
     print(f"Received message from topic {msg.topic}: {payload}")
     try:
-        sensor_data = json.loads(payload)
-        # Instantly PUSH the new data to all connected web clients
-        socketio.emit('sensor_update', sensor_data)
+        latest_sensor_data = json.loads(payload)
+        socketio.emit('sensor_update', latest_sensor_data)
         print("Pushed sensor data to UI via WebSocket.")
     except Exception as e:
         print(f"Error processing MQTT message: {e}")
 
-mqtt_client = mqtt.Client()
-mqtt_client.username_pw_set(MQTT_USERNAME, MQTT_PASSWORD)
-mqtt_client.on_connect = on_connect
-mqtt_client.on_message = on_message
-mqtt_client.tls_set(tls_version=mqtt.ssl.PROTOCOL_TLS)
-mqtt_client.connect(MQTT_BROKER_URL, MQTT_BROKER_PORT)
-mqtt_client.loop_start()
+def mqtt_thread_function():
+    mqtt_client.username_pw_set(MQTT_USERNAME, MQTT_PASSWORD)
+    mqtt_client.on_connect = on_connect
+    mqtt_client.on_message = on_message
+    mqtt_client.tls_set(tls_version=mqtt.ssl.PROTOCOL_TLS)
+    
+    while True:
+        try:
+            print("Attempting to connect to MQTT broker...")
+            mqtt_client.connect(MQTT_BROKER_URL, MQTT_BROKER_PORT, 60)
+            mqtt_client.loop_forever() # This is a blocking call
+        except Exception as e:
+            print(f"MQTT connection failed: {e}. Retrying in 5 seconds...")
+            time.sleep(5)
+
+# --- Start MQTT connection in a background thread ---
+mqtt_thread = threading.Thread(target=mqtt_thread_function, daemon=True)
+mqtt_thread.start()
 
 # Create a temporary directory for audio uploads
 if not os.path.exists("temp_audio"):
     os.makedirs("temp_audio")
 
-# ---------------- COMMAND SENDER (Uses MQTT) ----------------
+# ---------------- COMMAND SENDER ----------------
 last_command_sent = None
 def send_command_async(command: int):
     global last_command_sent
-    if command == last_command_sent:
-        return
+    if command == last_command_sent: return
     try:
         mqtt_client.publish(MQTT_COMMAND_TOPIC, str(command))
         print(f"Published command '{command}' to topic '{MQTT_COMMAND_TOPIC}'")
@@ -301,7 +317,7 @@ def send_command_async(command: int):
         print(f"Failed to publish to MQTT: {e}")
     last_command_sent = command
 
-# --- Endpoints ---
+# --- All Endpoints are correct and remain unchanged ---
 @app.route('/send_command', methods=['POST'])
 def send_command():
     send_command_async(int(request.form.get("command", 1)))
@@ -318,8 +334,8 @@ def gesture_command():
 
 @app.route('/process_audio', methods=['POST'])
 def process_audio():
+    # This function is unchanged
     if 'audio_data' not in request.files: return jsonify({"error": "No audio file found"}), 400
-    # (This function is unchanged, it just calls our new send_command_async)
     audio_file = request.files['audio_data']
     filepath = os.path.join("temp_audio", "recording.wav")
     audio_file.save(filepath)
@@ -338,8 +354,10 @@ def process_audio():
         if os.path.exists(filepath): os.remove(filepath)
     return jsonify({"text": text})
 
-# NOTE: The '/get_sensor_data' endpoint is no longer needed.
-# The server now PUSHES data to the client.
+# We add a new endpoint for the initial data load
+@app.route('/get_initial_data', methods=['GET'])
+def get_initial_data():
+    return jsonify(latest_sensor_data)
 
 @app.route('/')
 def home(): 
@@ -347,5 +365,4 @@ def home():
 
 # ---------------- MAIN ----------------
 if __name__ == '__main__':
-    # Use socketio.run() to start the server
     socketio.run(app, host="0.0.0.0", port=5000, debug=False)

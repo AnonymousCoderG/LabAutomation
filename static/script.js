@@ -1,44 +1,37 @@
-/*
-	Designed by: Alex Harris 
-	Original Image: https://www.artstation.com/artwork/vBYdY
-*/
-
-// --- This section for the 3D house animation is unchanged ---
-const b = document.body;
-const h = document.querySelector("#h");
-const leftPanel = document.querySelector(".left-panel");
-const unit = 1.75;
-let isRaining = false;
-const a = document.querySelector("#a");
-const block = document.querySelector("#block");
-const mirrorContent = document.querySelector('.mirror-content');
-const curiousContent = document.querySelector('.curious-content');
-
-const moveFunc = (e) => {
-    const rect = leftPanel.getBoundingClientRect();
-    let x = (e.clientX - rect.left) / rect.width - 0.5;
-    let y = (e.clientY - rect.top) / rect.height - 0.5;
-    h.style.transform = `perspective(${400*unit}vmin) rotateX(${y*30+66}deg) rotateZ(${-x*420+40}deg) translateZ(${-14*unit}vmin)`;
-};
-const mouseDownFunc = () => b.addEventListener("mousemove", moveFunc);
-const mouseUpFunc = () => b.removeEventListener("mousemove", moveFunc);
-const playFunc = () => {
-	h.classList.toggle("is-main-active");
-	a.loop = true;
-	if (a.paused) a.play();
-	else { a.pause(); a.currentTime = 0; }
-    mirrorContent.classList.toggle('is-hidden');
-    curiousContent.classList.toggle('is-hidden');
-};
-leftPanel.addEventListener("mousedown", mouseDownFunc);
-b.addEventListener("mouseup", mouseUpFunc);
-block.addEventListener("click", playFunc);
-// --- End 3D House Animation Logic ---
-
-
-// --- FIX: Wrap ALL application logic inside this event listener ---
+// --- Wrap ALL application logic inside this event listener ---
 document.addEventListener('DOMContentLoaded', function() {
-    // --- Get all DOM Elements ---
+    
+    // --- PART 1: 3D House Animation Logic ---
+    const b = document.body;
+    const h = document.querySelector("#h");
+    const leftPanel = document.querySelector(".left-panel");
+    const unit = 1.75;
+    const a = document.querySelector("#a");
+    const block = document.querySelector("#block");
+    const mirrorContent = document.querySelector('.mirror-content');
+    const curiousContent = document.querySelector('.curious-content');
+
+    const moveFunc = (e) => {
+        const rect = leftPanel.getBoundingClientRect();
+        let x = (e.clientX - rect.left) / rect.width - 0.5;
+        let y = (e.clientY - rect.top) / rect.height - 0.5;
+        h.style.transform = `perspective(${400*unit}vmin) rotateX(${y*30+66}deg) rotateZ(${-x*420+40}deg) translateZ(${-14*unit}vmin)`;
+    };
+    const mouseDownFunc = () => b.addEventListener("mousemove", moveFunc);
+    const mouseUpFunc = () => b.removeEventListener("mousemove", moveFunc);
+    const playFunc = () => {
+        h.classList.toggle("is-main-active");
+        a.loop = true;
+        if (a.paused) a.play();
+        else { a.pause(); a.currentTime = 0; }
+        mirrorContent.classList.toggle('is-hidden');
+        curiousContent.classList.toggle('is-hidden');
+    };
+    leftPanel.addEventListener("mousedown", mouseDownFunc);
+    b.addEventListener("mouseup", mouseUpFunc);
+    block.addEventListener("click", playFunc);
+
+    // --- PART 2: Get all other DOM Elements ---
     const sensorDataDiv = document.getElementById('sensor-data');
     const turnOnButton = document.getElementById('turn-on');
     const turnOffButton = document.getElementById('turn-off');
@@ -52,13 +45,13 @@ document.addEventListener('DOMContentLoaded', function() {
     const videoElement = document.getElementById('input-video');
     const canvasElement = document.getElementById('output-canvas');
     const canvasCtx = canvasElement.getContext('2d');
+    let isRaining = false;
 
-    // --- REAL-TIME SENSOR DATA WITH WEBSOCKETS ---
+    // --- PART 3: REAL-TIME SENSOR DATA WITH WEBSOCKETS ---
     const socket = io();
 
     socket.on('connect', () => {
         console.log('Connected to WebSocket server!');
-        // Request initial data once connected to populate the UI immediately
         fetch('/get_initial_data')
             .then(response => response.json())
             .then(data => {
@@ -67,7 +60,6 @@ document.addEventListener('DOMContentLoaded', function() {
             });
     });
 
-    // Listen for the 'sensor_update' event from the server
     socket.on('sensor_update', (data) => {
         console.log('Received sensor update:', data);
         updateSensorUI(data);
@@ -78,7 +70,6 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     function updateSensorUI(data) {
-        // --- Update Right Panel (Control Panel) ---
         let rightPanelContent = '';
         if (!data || Object.keys(data).length === 0) {
             rightPanelContent = '<p class="sensor-reading"><span class="sensor-label">Status:</span> <span class="sensor-value">Waiting for data...</span></p>';
@@ -91,7 +82,6 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         sensorDataDiv.innerHTML = rightPanelContent;
 
-        // --- Update Left Panel (3D Mirror) ---
         let mirrorContentText = '';
         if (!data || Object.keys(data).length === 0) {
             mirrorContentText = '<p>Connecting...</p>';
@@ -131,16 +121,15 @@ document.addEventListener('DOMContentLoaded', function() {
         isRaining = false;
         raindropContainer.innerHTML = "";
     }
-    // --- END SENSOR LOGIC ---
-
+    
+    // --- PART 4: VOICE AND MANUAL COMMANDS ---
     function sendCommand(commandValue) {
         const formData = new FormData();
         formData.append('command', commandValue);
         fetch('/send_command', { method: 'POST', body: formData })
             .catch(error => console.error('Error sending command:', error));
     }
-
-    // --- VOICE CONTROL FUNCTIONS ---
+    
     let mediaRecorder;
     let audioChunks = [];
     let audioContext;
@@ -148,22 +137,8 @@ document.addEventListener('DOMContentLoaded', function() {
         let buffer = new ArrayBuffer(44 + samples.length * 2);
         let view = new DataView(buffer);
         function writeString(view, offset, string) { for (let i = 0; i < string.length; i++) { view.setUint8(offset + i, string.charCodeAt(i)); } }
-        writeString(view, 0, 'RIFF');
-        view.setUint32(4, 36 + samples.length * 2, true);
-        writeString(view, 8, 'WAVE');
-        writeString(view, 12, 'fmt ');
-        view.setUint32(16, 16, true);
-        view.setUint16(20, 1, true);
-        view.setUint16(22, 1, true);
-        view.setUint32(24, sampleRate, true);
-        view.setUint32(28, sampleRate * 2, true);
-        view.setUint16(32, 2, true);
-        view.setUint16(34, 16, true);
-        writeString(view, 36, 'data');
-        view.setUint32(40, samples.length * 2, true);
-        for (let i = 0; i < samples.length; i++) {
-            view.setInt16(44 + i * 2, samples[i] * 0x7FFF, true);
-        }
+        writeString(view, 0, 'RIFF'); view.setUint32(4, 36 + samples.length * 2, true); writeString(view, 8, 'WAVE'); writeString(view, 12, 'fmt '); view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, 1, true); view.setUint32(24, sampleRate, true); view.setUint32(28, sampleRate * 2, true); view.setUint16(32, 2, true); view.setUint16(34, 16, true); writeString(view, 36, 'data'); view.setUint32(40, samples.length * 2, true);
+        for (let i = 0; i < samples.length; i++) { view.setInt16(44 + i * 2, samples[i] * 0x7FFF, true); }
         return new Blob([view], { type: 'audio/wav' });
     }
     async function startRecording() {
@@ -179,23 +154,16 @@ document.addEventListener('DOMContentLoaded', function() {
             mediaRecorder = {
                 stream: stream,
                 stop: () => {
-                    source.disconnect();
-                    processor.disconnect();
-                    audioContext.close();
+                    source.disconnect(); processor.disconnect(); audioContext.close();
                     const fullBuffer = new Float32Array(audioChunks.reduce((acc, val) => acc + val.length, 0));
-                    let offset = 0;
-                    for(const chunk of audioChunks) {
-                        fullBuffer.set(chunk, offset);
-                        offset += chunk.length;
-                    }
+                    let offset = 0; for(const chunk of audioChunks) { fullBuffer.set(chunk, offset); offset += chunk.length; }
                     const audioBlob = encodeWAV(fullBuffer, audioContext.sampleRate);
                     sendAudioToServer(audioBlob);
                     stream.getTracks().forEach(track => track.stop());
                 }
             };
             voiceStatus.textContent = 'Status: Listening...';
-            startRecordingButton.disabled = true;
-            stopRecordingButton.disabled = false;
+            startRecordingButton.disabled = true; stopRecordingButton.disabled = false;
         } catch (err) {
             console.error("Error accessing microphone:", err);
             voiceStatus.textContent = 'Error: Could not access microphone.';
@@ -205,9 +173,7 @@ document.addEventListener('DOMContentLoaded', function() {
         if (mediaRecorder) {
             mediaRecorder.stop();
             voiceStatus.textContent = 'Status: Processing...';
-            startRecordingButton.disabled = false;
-            stopRecordingButton.disabled = true;
-            mediaRecorder = null;
+            startRecordingButton.disabled = false; stopRecordingButton.disabled = true; mediaRecorder = null;
         }
     }
     async function sendAudioToServer(audioBlob) {
@@ -223,7 +189,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
-    // --- MEDIAPIPE GESTURE RECOGNITION ---
+    // --- PART 5: MEDIAPIPE GESTURE RECOGNITION ---
     const TIP_IDS = [4, 8, 12, 16, 20];
     const WINDOW_SIZE = 15;
     const REQUIRED_FRACTION = 0.7;

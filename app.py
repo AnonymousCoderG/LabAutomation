@@ -235,6 +235,7 @@
 #above code works well but sensor data is not received in app and command is not received by esp
 
 # --- IMPORTANT: This must be the very first line of your app.py ---
+
 import eventlet
 eventlet.monkey_patch()
 

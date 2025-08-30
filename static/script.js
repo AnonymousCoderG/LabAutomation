@@ -3,7 +3,7 @@
 	Original Image: https://www.artstation.com/artwork/vBYdY
 */
 
-// --- 3D house animation logic (unchanged) ---
+// --- This section for the 3D house animation is unchanged ---
 const b = document.body;
 const h = document.querySelector("#h");
 const leftPanel = document.querySelector(".left-panel");
@@ -33,8 +33,10 @@ const playFunc = () => {
 leftPanel.addEventListener("mousedown", mouseDownFunc);
 b.addEventListener("mouseup", mouseUpFunc);
 block.addEventListener("click", playFunc);
-// --- End 3D House Logic ---
+// --- End 3D House Animation Logic ---
 
+
+// --- FIX: Wrap ALL application logic inside this event listener ---
 document.addEventListener('DOMContentLoaded', function() {
     // --- Get all DOM Elements ---
     const sensorDataDiv = document.getElementById('sensor-data');
@@ -56,6 +58,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     socket.on('connect', () => {
         console.log('Connected to WebSocket server!');
+        // Request initial data once connected to populate the UI immediately
         fetch('/get_initial_data')
             .then(response => response.json())
             .then(data => {
@@ -64,6 +67,7 @@ document.addEventListener('DOMContentLoaded', function() {
             });
     });
 
+    // Listen for the 'sensor_update' event from the server
     socket.on('sensor_update', (data) => {
         console.log('Received sensor update:', data);
         updateSensorUI(data);

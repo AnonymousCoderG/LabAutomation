@@ -239,7 +239,7 @@ from flask import Flask, request, jsonify, render_template
 import threading
 import speech_recognition as sr
 import os
-import json # <-- 1. IMPORT THE JSON LIBRARY
+import json # <-- Import the json library
 import paho.mqtt.client as mqtt
 
 app = Flask(__name__, template_folder="templates", static_folder="static")
@@ -256,19 +256,25 @@ MQTT_SENSOR_TOPIC = "home/room/sensors"
 def on_connect(client, userdata, flags, rc):
     if rc == 0:
         print("Connected to MQTT Broker!")
-        client.subscribe(MQTT_SENSOR_TOPIC) # Subscribe to sensor topic on connect
+        client.subscribe(MQTT_SENSOR_TOPIC)
     else:
         print(f"Failed to connect, return code {rc}\n")
 
+# --- FIX IS HERE ---
 def on_message(client, userdata, msg):
     global latest_sensor_data
-    print(f"Received message from topic {msg.topic}: {msg.payload.decode()}")
-    # --- 2. FIX: Parse the incoming JSON from the ESP32 ---
+    payload = msg.payload.decode()
+    print(f"Received message from topic {msg.topic}: {payload}")
     try:
-        latest_sensor_data = json.loads(msg.payload.decode())
-    except json.JSONDecodeError:
-        print("Error decoding JSON from MQTT")
-
+        # Correctly parse the JSON string and update the global dictionary
+        latest_sensor_data = json.loads(payload)
+        print("Sensor data updated successfully.")
+    except json.JSONDecodeError as e:
+        print(f"Error decoding JSON from MQTT: {e}")
+    except Exception as e:
+        print(f"An unexpected error occurred in on_message: {e}")
+# --- END FIX ---
+    
 mqtt_client = mqtt.Client()
 mqtt_client.username_pw_set(MQTT_USERNAME, MQTT_PASSWORD)
 mqtt_client.on_connect = on_connect
@@ -285,12 +291,12 @@ if not os.path.exists("temp_audio"):
 latest_sensor_data = {}
 
 # ---------------- COMMAND SENDER (NOW USES MQTT) ----------------
-# (This entire section is unchanged and correct)
 last_command_sent = None
 def send_command_async(command: int):
     global last_command_sent
     if command == last_command_sent:
         return
+
     try:
         mqtt_client.publish(MQTT_COMMAND_TOPIC, str(command))
         print(f"Published command '{command}' to topic '{MQTT_COMMAND_TOPIC}'")
@@ -299,7 +305,6 @@ def send_command_async(command: int):
     last_command_sent = command
 
 # --- Endpoints ---
-# (All endpoint functions are unchanged and correct)
 @app.route('/send_command', methods=['POST'])
 def send_command():
     send_command_async(int(request.form.get("command", 1)))

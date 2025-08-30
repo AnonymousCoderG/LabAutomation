@@ -52,27 +52,35 @@ document.addEventListener('DOMContentLoaded', function() {
     const canvasElement = document.getElementById('output-canvas');
     const canvasCtx = canvasElement.getContext('2d');
 
-    // --- NEW: REAL-TIME SENSOR DATA WITH WEBSOCKETS ---
-    // Establish connection to the WebSocket server
+    // --- REAL-TIME SENSOR DATA WITH WEBSOCKETS ---
     const socket = io();
 
     socket.on('connect', () => {
         console.log('Connected to WebSocket server!');
+        // Request initial data once connected
+        fetch('/get_initial_data')
+            .then(response => response.json())
+            .then(data => {
+                console.log('Received initial sensor data:', data);
+                updateSensorUI(data);
+            });
     });
 
-    // Listen for the 'sensor_update' event from the server
     socket.on('sensor_update', (data) => {
         console.log('Received sensor update:', data);
         updateSensorUI(data);
+    });
+    
+    socket.on('disconnect', () => {
+        console.log('Disconnected from WebSocket server.');
     });
 
     function updateSensorUI(data) {
         // --- Update Right Panel (Control Panel) ---
         let rightPanelContent = '';
         if (!data || Object.keys(data).length === 0) {
-            rightPanelContent = '<p class="sensor-reading">No data received yet.</p>';
+            rightPanelContent = '<p class="sensor-reading"><span class="sensor-label">Status:</span> <span class="sensor-value">Waiting for data...</span></p>';
         } else {
-            // Create styled HTML with labels and values
             rightPanelContent += `<p class="sensor-reading"><span class="sensor-label">Temperature:</span> <span class="sensor-value">${data.temperature || 'N/A'} °C</span></p>`;
             rightPanelContent += `<p class="sensor-reading"><span class="sensor-label">Humidity:</span> <span class="sensor-value">${data.humidity || 'N/A'} %</span></p>`;
             rightPanelContent += `<p class="sensor-reading"><span class="sensor-label">Rain Detected:</span> <span class="sensor-value">${data.isRaining || 'N/A'}</span></p>`;
@@ -84,12 +92,12 @@ document.addEventListener('DOMContentLoaded', function() {
         // --- Update Left Panel (3D Mirror) ---
         let mirrorContentText = '';
         if (!data || Object.keys(data).length === 0) {
-            mirrorContentText = '<p>Offline</p>';
+            mirrorContentText = '<p>Connecting...</p>';
             sunIcon.style.display = 'none';
             fireIcon.style.display = 'none';
             clearRainEffect();
         } else {
-            mirrorContentText += `<p>Temp: ${data.temperature || 'N/A'} °C</p>`;
+            mirrorContentText += `<p>Temp: ${data.temperature || 'N/A'} C</p>`;
             mirrorContentText += `<p>Hum: ${data.humidity || 'N/A'} %</p>`;
             mirrorContentText += `<p>Rain: ${data.isRaining || 'N/A'}</p>`;
             mirrorContentText += `<p>Fire: ${data.fireDetected || 'N/A'}</p>`;
@@ -103,8 +111,24 @@ document.addEventListener('DOMContentLoaded', function() {
         mirrorSensorDiv.innerHTML = mirrorContentText;
     }
 
-    function createRainEffect() { /* ... content unchanged ... */ }
-    function clearRainEffect() { /* ... content unchanged ... */ }
+    function createRainEffect() {
+        if (isRaining) return;
+        isRaining = true;
+        let drops = "";
+        for (let i = 0; i < 30; i++) {
+            const left = Math.floor(Math.random() * 100);
+            const duration = Math.random() * 0.5 + 0.5;
+            const delay = Math.random() * 1;
+            drops += `<div class="raindrop" style="left: ${left}%; animation-duration: ${duration}s; animation-delay: ${delay}s;"></div>`;
+        }
+        raindropContainer.innerHTML = drops;
+    }
+
+    function clearRainEffect() {
+        if (!isRaining) return;
+        isRaining = false;
+        raindropContainer.innerHTML = "";
+    }
     // --- END SENSOR LOGIC ---
 
     function sendCommand(commandValue) {
@@ -114,29 +138,171 @@ document.addEventListener('DOMContentLoaded', function() {
             .catch(error => console.error('Error sending command:', error));
     }
 
-    // --- VOICE CONTROL FUNCTIONS (WITH WAV ENCODING FIX) ---
-    // (These functions are complete and correct from your previous code)
+    // --- VOICE CONTROL FUNCTIONS ---
     let mediaRecorder;
     let audioChunks = [];
     let audioContext;
-    function encodeWAV(samples, sampleRate) { /* ... content unchanged ... */ }
-    async function startRecording() { /* ... content unchanged ... */ }
-    function stopRecording() { /* ... content unchanged ... */ }
-    async function sendAudioToServer(audioBlob) { /* ... content unchanged ... */ }
+    function encodeWAV(samples, sampleRate) {
+        let buffer = new ArrayBuffer(44 + samples.length * 2);
+        let view = new DataView(buffer);
+        function writeString(view, offset, string) { for (let i = 0; i < string.length; i++) { view.setUint8(offset + i, string.charCodeAt(i)); } }
+        writeString(view, 0, 'RIFF');
+        view.setUint32(4, 36 + samples.length * 2, true);
+        writeString(view, 8, 'WAVE');
+        writeString(view, 12, 'fmt ');
+        view.setUint32(16, 16, true);
+        view.setUint16(20, 1, true);
+        view.setUint16(22, 1, true);
+        view.setUint32(24, sampleRate, true);
+        view.setUint32(28, sampleRate * 2, true);
+        view.setUint16(32, 2, true);
+        view.setUint16(34, 16, true);
+        writeString(view, 36, 'data');
+        view.setUint32(40, samples.length * 2, true);
+        for (let i = 0; i < samples.length; i++) {
+            view.setInt16(44 + i * 2, samples[i] * 0x7FFF, true);
+        }
+        return new Blob([view], { type: 'audio/wav' });
+    }
+    async function startRecording() {
+        try {
+            audioChunks = [];
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            const source = audioContext.createMediaStreamSource(stream);
+            const processor = audioContext.createScriptProcessor(4096, 1, 1);
+            processor.onaudioprocess = (e) => audioChunks.push(new Float32Array(e.inputBuffer.getChannelData(0)));
+            source.connect(processor);
+            processor.connect(audioContext.destination);
+            mediaRecorder = {
+                stream: stream,
+                stop: () => {
+                    source.disconnect();
+                    processor.disconnect();
+                    audioContext.close();
+                    const fullBuffer = new Float32Array(audioChunks.reduce((acc, val) => acc + val.length, 0));
+                    let offset = 0;
+                    for(const chunk of audioChunks) {
+                        fullBuffer.set(chunk, offset);
+                        offset += chunk.length;
+                    }
+                    const audioBlob = encodeWAV(fullBuffer, audioContext.sampleRate);
+                    sendAudioToServer(audioBlob);
+                    stream.getTracks().forEach(track => track.stop());
+                }
+            };
+            voiceStatus.textContent = 'Status: Listening...';
+            startRecordingButton.disabled = true;
+            stopRecordingButton.disabled = false;
+        } catch (err) {
+            console.error("Error accessing microphone:", err);
+            voiceStatus.textContent = 'Error: Could not access microphone.';
+        }
+    }
+    function stopRecording() {
+        if (mediaRecorder) {
+            mediaRecorder.stop();
+            voiceStatus.textContent = 'Status: Processing...';
+            startRecordingButton.disabled = false;
+            stopRecordingButton.disabled = true;
+            mediaRecorder = null;
+        }
+    }
+    async function sendAudioToServer(audioBlob) {
+        const formData = new FormData();
+        formData.append('audio_data', audioBlob, 'recording.wav');
+        try {
+            const response = await fetch('/process_audio', { method: 'POST', body: formData });
+            const result = await response.json();
+            voiceStatus.textContent = `Recognized: ${result.text}`;
+        } catch (err) {
+            console.error("Error sending audio to server:", err);
+            voiceStatus.textContent = 'Error: Failed to send audio.';
+        }
+    }
 
-    // --- MEDIAPIPE GESTURE RECOGNITION IN JAVASCRIPT ---
-    // (This entire section is complete and correct from your previous code)
+    // --- MEDIAPIPE GESTURE RECOGNITION ---
     const TIP_IDS = [4, 8, 12, 16, 20];
     const WINDOW_SIZE = 15;
     const REQUIRED_FRACTION = 0.7;
     let actionWindow = [];
     let lastStableAction = '';
     let lastCommandTime = 0;
-    function sendGestureCommand(action) { /* ... */ }
-    function fingerStates(landmarks, handedLabel) { /* ... */ }
-    function classifyHand(landmarks, handedLabel) { /* ... */ }
-    function decideAction(perHandClasses) { /* ... */ }
-    function onResults(results) { /* ... */ }
+    function sendGestureCommand(action) {
+        if (Date.now() - lastCommandTime < 3000) return;
+        lastCommandTime = Date.now();
+        fetch('/gesture_command', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: action })
+        }).catch(err => console.error('Error sending gesture command:', err));
+    }
+    function fingerStates(landmarks, handedLabel) {
+        const fingers = [0, 0, 0, 0, 0];
+        const thumbTip = landmarks[TIP_IDS[0]];
+        const thumbIp = landmarks[TIP_IDS[0] - 1];
+        fingers[0] = (handedLabel === 'Right' ? thumbTip.x < thumbIp.x : thumbTip.x > thumbIp.x) ? 1 : 0;
+        for (let i = 1; i < 5; i++) {
+            fingers[i] = (landmarks[TIP_IDS[i]].y < landmarks[TIP_IDS[i] - 2].y) ? 1 : 0;
+        }
+        return fingers;
+    }
+    function classifyHand(landmarks, handedLabel) {
+        const up = fingerStates(landmarks, handedLabel).reduce((a, b) => a + b, 0);
+        if (up >= 4) return 'Open';
+        if (up === 0) return 'Fist';
+        return 'Other';
+    }
+    function decideAction(perHandClasses) {
+        if (perHandClasses.length !== 2) return '';
+        const openCount = perHandClasses.filter(c => c === 'Open').length;
+        const fistCount = perHandClasses.filter(c => c === 'Fist').length;
+        if (openCount === 2) return 'ON';
+        if (fistCount === 2) return 'OFF';
+        return '';
+    }
+    function onResults(results) {
+        canvasCtx.save();
+        canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+        canvasCtx.translate(canvasElement.width, 0);
+        canvasCtx.scale(-1, 1);
+        canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+        const perHandClasses = [];
+        if (results.multiHandLandmarks && results.multiHandedness) {
+            for (let i = 0; i < results.multiHandLandmarks.length; i++) {
+                const landmarks = results.multiHandLandmarks[i];
+                const handedness = results.multiHandedness[i];
+                drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, { color: '#00FF00', lineWidth: 5 });
+                drawLandmarks(canvasCtx, landmarks, { color: '#FF0000', lineWidth: 2 });
+                perHandClasses.push(classifyHand(landmarks, handedness.label));
+            }
+        }
+        const actionNow = decideAction(perHandClasses);
+        actionWindow.push(actionNow || '');
+        if (actionWindow.length > WINDOW_SIZE) actionWindow.shift();
+        const counts = actionWindow.reduce((acc, val) => { if (val) acc[val] = (acc[val] || 0) + 1; return acc; }, {});
+        let stableAction = '';
+        if (Object.keys(counts).length > 0) {
+            const topAction = Object.keys(counts).reduce((a, b) => counts[a] > counts[b] ? a : b);
+            if (counts[topAction] >= Math.floor(REQUIRED_FRACTION * actionWindow.length)) {
+                stableAction = topAction;
+            }
+        }
+        if (stableAction && stableAction !== lastStableAction) {
+            lastStableAction = stableAction;
+            sendGestureCommand(stableAction);
+        } else if (!stableAction) {
+            lastStableAction = '';
+        }
+        if (lastStableAction) {
+             canvasCtx.scale(-1, 1);
+             canvasCtx.fillStyle = "red";
+             canvasCtx.font = "bold 30px 'Share Tech'";
+             canvasCtx.textAlign = "center";
+             canvasCtx.fillText(lastStableAction === 'ON' ? 'ALL DEVICES ON' : 'ALL DEVICES OFF', -canvasElement.width / 2, 40);
+        }
+        canvasCtx.restore();
+    }
     const hands = new Hands({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}` });
     hands.setOptions({ maxNumHands: 2, modelComplexity: 1, minDetectionConfidence: 0.7, minTrackingConfidence: 0.7 });
     hands.onResults(onResults);

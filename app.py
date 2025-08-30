@@ -234,23 +234,20 @@
 
 #above code works well but sensor data is not received in app and command is not received by esp
 
-# --- IMPORTANT: This must be the very first line of your app.py ---
-
-import eventlet
-eventlet.monkey_patch()
-
-from flask import Flask, render_template, request, jsonify
-import json
-import os
+from flask import Flask, request, jsonify, render_template, Response
+import requests
 import threading
-from flask_socketio import SocketIO
-import paho.mqtt.client as mqtt
-import speech_recognition as sr
+import cv2
 import time
+import mediapipe as mp
+from collections import deque, Counter
+import speech_recognition as sr
+import os
+import json
+import paho.mqtt.client as mqtt
+import numpy as np
 
 app = Flask(__name__, template_folder="templates", static_folder="static")
-app.config['SECRET_KEY'] = 'a_very_secret_and_random_key_for_security' 
-socketio = SocketIO(app, async_mode='eventlet')
 
 # ------------------- MQTT CONFIG -------------------
 MQTT_BROKER_URL = "450a2a0e66c34794aac4e8ff837827d2.s1.eu.hivemq.cloud"
@@ -260,10 +257,14 @@ MQTT_PASSWORD = "LOF@123g"
 MQTT_COMMAND_TOPIC = "home/room/command"
 MQTT_SENSOR_TOPIC = "home/room/sensors"
 
-# --- Setup the MQTT Client (now in a more robust way) ---
-mqtt_client = mqtt.Client()
-latest_sensor_data = {} # Initialize here
+# ------------------- GLOBAL VARIABLES -------------------
+latest_sensor_data = {}
+latest_frame = None
+latest_mediapipe_results = None
+frame_lock = threading.Lock()
+cap = None # Will be initialized later
 
+# --- Setup the MQTT Client ---
 def on_connect(client, userdata, flags, rc):
     if rc == 0:
         print("Connected to MQTT Broker!")
@@ -277,36 +278,26 @@ def on_message(client, userdata, msg):
     print(f"Received message from topic {msg.topic}: {payload}")
     try:
         latest_sensor_data = json.loads(payload)
-        # Use socketio.emit to push data to all connected clients
-        socketio.emit('sensor_update', latest_sensor_data)
-        print("Pushed sensor data to UI via WebSocket.")
-    except Exception as e:
-        print(f"Error processing MQTT message: {e}")
+    except json.JSONDecodeError as e:
+        print(f"Error decoding JSON from MQTT: {e}")
+
+mqtt_client = mqtt.Client()
+mqtt_client.username_pw_set(MQTT_USERNAME, MQTT_PASSWORD)
+mqtt_client.on_connect = on_connect
+mqtt_client.on_message = on_message
+mqtt_client.tls_set(tls_version=mqtt.ssl.PROTOCOL_TLS)
 
 def mqtt_thread_function():
-    mqtt_client.username_pw_set(MQTT_USERNAME, MQTT_PASSWORD)
-    mqtt_client.on_connect = on_connect
-    mqtt_client.on_message = on_message
-    mqtt_client.tls_set(tls_version=mqtt.ssl.PROTOCOL_TLS)
-    
     while True:
         try:
             print("Attempting to connect to MQTT broker...")
             mqtt_client.connect(MQTT_BROKER_URL, MQTT_BROKER_PORT, 60)
-            mqtt_client.loop_forever() # This is a blocking call that runs the client
+            mqtt_client.loop_forever()
         except Exception as e:
             print(f"MQTT connection failed: {e}. Retrying in 5 seconds...")
             time.sleep(5)
 
-# --- Start MQTT connection in a non-blocking background thread ---
-mqtt_thread = threading.Thread(target=mqtt_thread_function, daemon=True)
-mqtt_thread.start()
-
-# Create a temporary directory for audio uploads
-if not os.path.exists("temp_audio"):
-    os.makedirs("temp_audio")
-
-# ---------------- COMMAND SENDER ----------------
+# ---------------- COMMAND SENDER (Uses MQTT) ----------------
 last_command_sent = None
 def send_command_async(command: int):
     global last_command_sent
@@ -318,23 +309,145 @@ def send_command_async(command: int):
         print(f"Failed to publish to MQTT: {e}")
     last_command_sent = command
 
-# --- Endpoints ---
+# --- CAMERA AND MEDIAPIPE SETUP (SERVER-SIDE) ---
+try:
+    cap = cv2.VideoCapture(0)
+    if not cap.isOpened():
+        raise IOError("Cannot open webcam")
+    print("Camera initialized successfully.")
+    # Initialize MediaPipe only if camera is available
+    mp_hands = mp.solutions.hands
+    hands = mp_hands.Hands(max_num_hands=2, min_detection_confidence=0.6, min_tracking_confidence=0.6)
+    mp_drawing = mp.solutions.drawing_utils
+    TIP_IDS = [4, 8, 12, 16, 20]
+    action_window = deque(maxlen=5)
+
+except Exception as e:
+    print("**********************************************")
+    print(f"WARNING: Could not initialize camera: {e}")
+    print("Gesture recognition will be disabled.")
+    print("**********************************************")
+    cap = None
+
+# --- Gesture Recognition Logic ---
+def finger_states(landmarks, handed_label):
+    fingers = [0, 0, 0, 0, 0]
+    if landmarks:
+        thumb_tip, thumb_ip = landmarks[TIP_IDS[0]], landmarks[TIP_IDS[0] - 1]
+        fingers[0] = 1 if (thumb_tip.x < thumb_ip.x if handed_label == 'Right' else thumb_tip.x > thumb_ip.x) else 0
+        for i, tip_id in enumerate(TIP_IDS[1:], start=1):
+            fingers[i] = 1 if landmarks[tip_id].y < landmarks[tip_id - 2].y else 0
+    return fingers
+
+def classify_hand(landmarks, handed_label):
+    up = sum(finger_states(landmarks, handed_label))
+    if up >= 4: return 'Open'
+    if up == 0: return 'Fist'
+    return 'Other'
+
+def decide_action(per_hand_classes):
+    if len(per_hand_classes) != 2: return ''
+    if per_hand_classes.count('Open') == 2: return 'All Devices ON'
+    if per_hand_classes.count('Fist') == 2: return 'All Devices OFF'
+    return ''
+
+# --- Background Threads for Video Processing ---
+def capture_and_process_loop():
+    global latest_frame, latest_mediapipe_results
+    if not cap: return
+
+    last_stable_action = ''
+    last_detect_time = 0.0
+    
+    while True:
+        ok, frame = cap.read()
+        if not ok:
+            print("Failed to read frame from camera.")
+            break
+        
+        frame = cv2.resize(frame, (640, 480))
+        frame_flipped = cv2.flip(frame, 1)
+        rgb_frame = cv2.cvtColor(frame_flipped, cv2.COLOR_BGR2RGB)
+        results = hands.process(rgb_frame)
+        
+        per_hand_classes = []
+        if results.multi_hand_landmarks and results.multi_handedness:
+            for hand_lms, handed in zip(results.multi_hand_landmarks, results.multi_handedness):
+                mp_drawing.draw_landmarks(frame_flipped, hand_lms, mp_hands.HAND_CONNECTIONS)
+                per_hand_classes.append(classify_hand(hand_lms.landmark, handed.classification[0].label))
+
+        action_now = decide_action(per_hand_classes)
+        action_window.append(action_now or '')
+        
+        counts = Counter(action_window)
+        counts.pop('', None)
+        
+        stable_action = ''
+        if counts:
+            top_action, top_count = counts.most_common(1)[0]
+            if top_count >= int(0.6 * len(action_window)):
+                stable_action = top_action
+
+        if stable_action and stable_action != last_stable_action:
+            last_stable_action = stable_action
+            last_detect_time = time.time()
+            if stable_action == "All Devices ON": send_command_async(1)
+            elif stable_action == "All Devices OFF": send_command_async(0)
+
+        if time.time() - last_detect_time <= 1.0 and last_stable_action:
+            cv2.putText(frame_flipped, last_stable_action, (40, 440), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 0, 255), 3)
+
+        with frame_lock:
+            latest_frame = frame_flipped.copy()
+        
+        time.sleep(0.01)
+
+def generate_frames():
+    while True:
+        with frame_lock:
+            if latest_frame is None:
+                if not cap: # If camera failed to initialize
+                    placeholder = np.zeros((360, 480, 3), dtype=np.uint8)
+                    cv2.putText(placeholder, "Camera Not Available", (50, 180), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+                    ret, buffer = cv2.imencode('.jpg', placeholder)
+                    frame_bytes = buffer.tobytes()
+                    yield (b'--frame\r\n'
+                           b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
+                    time.sleep(1)
+                    continue
+                else: # If camera is just warming up
+                    time.sleep(0.1)
+                    continue
+            
+            ret, buffer = cv2.imencode('.jpg', latest_frame)
+            if not ret:
+                continue
+            frame_bytes = buffer.tobytes()
+            yield (b'--frame\r\n'
+                   b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
+        time.sleep(0.03) # Limit framerate to ~30fps to reduce CPU load
+
+# ------------------- FLASK ROUTES -------------------
+@app.route('/')
+def home(): 
+    return render_template("index.html")
+
+@app.route('/video_feed')
+def video_feed():
+    return Response(generate_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
+
+@app.route('/get_sensor_data', methods=['GET'])
+def get_sensor_data():
+    return jsonify(latest_sensor_data)
+
 @app.route('/send_command', methods=['POST'])
 def send_command():
     send_command_async(int(request.form.get("command", 1)))
     return "Command sent!"
 
-@app.route('/gesture_command', methods=['POST'])
-def gesture_command():
-    action = request.get_json().get('action')
-    if action == 'ON': send_command_async(1)
-    elif action == 'OFF': send_command_async(0)
-    global last_command_sent
-    last_command_sent = None
-    return jsonify({"status": "gesture command received"})
-
 @app.route('/process_audio', methods=['POST'])
 def process_audio():
+    # This function is unchanged
     if 'audio_data' not in request.files: return jsonify({"error": "No audio file found"}), 400
     audio_file = request.files['audio_data']
     filepath = os.path.join("temp_audio", "recording.wav")
@@ -354,16 +467,12 @@ def process_audio():
         if os.path.exists(filepath): os.remove(filepath)
     return jsonify({"text": text})
 
-# Endpoint for the initial data load when a client first connects
-@app.route('/get_initial_data', methods=['GET'])
-def get_initial_data():
-    return jsonify(latest_sensor_data)
-
-@app.route('/')
-def home(): 
-    return render_template("index.html")
-
-# ---------------- MAIN ----------------
 if __name__ == '__main__':
-    # Use socketio.run() to start the eventlet server
-    socketio.run(app, host="0.0.0.0", port=5000, debug=False)
+    # Start MQTT connection in a background thread
+    mqtt_thread = threading.Thread(target=mqtt_thread_function, daemon=True)
+    mqtt_thread.start()
+    # Start video processing in a background thread
+    video_thread = threading.Thread(target=capture_and_process_loop, daemon=True)
+    video_thread.start()
+    
+    app.run(host="0.0.0.0", port=5000, debug=False)

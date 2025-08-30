@@ -9,13 +9,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Share+Tech&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     
-    <!-- MediaPipe Script Tags -->
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
-
-    <!-- ADD THIS LINE: Socket.IO Client Library -->
-    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    <!-- External libraries like MediaPipe and Socket.IO are no longer needed here -->
 
 </head>
 <body>
@@ -84,10 +78,8 @@
                 <h1>Smart Room Control</h1>
                 <h2>Live Gesture Feed</h2>
                 
-                <div class="video-container">
-                    <video id="input-video" width="480" height="360" autoplay muted playsinline style="display: none;"></video>
-                    <canvas id="output-canvas" width="480" height="360"></canvas>
-                </div>
+                <!-- MODIFIED: Changed back to a simple IMG tag -->
+                <img id="video-feed" src="{{ url_for('video_feed') }}" width="480" height="360">
                 
                 <h2>Sensor Readings</h2>
                 <div id="sensor-data"><p>Loading data...</p></div>

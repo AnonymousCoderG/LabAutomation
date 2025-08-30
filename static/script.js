@@ -1,37 +1,43 @@
-// --- Wrap ALL application logic inside this event listener ---
+/*
+	Designed by: Alex Harris 
+	Original Image: https://www.artstation.com/artwork/vBYdY
+*/
+
+// --- 3D house animation logic (unchanged) ---
+const b = document.body;
+const h = document.querySelector("#h");
+const leftPanel = document.querySelector(".left-panel");
+const unit = 1.75;
+let isRaining = false;
+const a = document.querySelector("#a");
+const block = document.querySelector("#block");
+const mirrorContent = document.querySelector('.mirror-content');
+const curiousContent = document.querySelector('.curious-content');
+
+const moveFunc = (e) => {
+    const rect = leftPanel.getBoundingClientRect();
+    let x = (e.clientX - rect.left) / rect.width - 0.5;
+    let y = (e.clientY - rect.top) / rect.height - 0.5;
+    h.style.transform = `perspective(${400*unit}vmin) rotateX(${y*30+66}deg) rotateZ(${-x*420+40}deg) translateZ(${-14*unit}vmin)`;
+};
+const mouseDownFunc = () => b.addEventListener("mousemove", moveFunc);
+const mouseUpFunc = () => b.removeEventListener("mousemove", moveFunc);
+const playFunc = () => {
+	h.classList.toggle("is-main-active");
+	a.loop = true;
+	if (a.paused) a.play();
+	else { a.pause(); a.currentTime = 0; }
+    mirrorContent.classList.toggle('is-hidden');
+    curiousContent.classList.toggle('is-hidden');
+};
+leftPanel.addEventListener("mousedown", mouseDownFunc);
+b.addEventListener("mouseup", mouseUpFunc);
+block.addEventListener("click", playFunc);
+// --- End 3D House Logic ---
+
+
 document.addEventListener('DOMContentLoaded', function() {
-    
-    // --- PART 1: 3D House Animation Logic ---
-    const b = document.body;
-    const h = document.querySelector("#h");
-    const leftPanel = document.querySelector(".left-panel");
-    const unit = 1.75;
-    const a = document.querySelector("#a");
-    const block = document.querySelector("#block");
-    const mirrorContent = document.querySelector('.mirror-content');
-    const curiousContent = document.querySelector('.curious-content');
-
-    const moveFunc = (e) => {
-        const rect = leftPanel.getBoundingClientRect();
-        let x = (e.clientX - rect.left) / rect.width - 0.5;
-        let y = (e.clientY - rect.top) / rect.height - 0.5;
-        h.style.transform = `perspective(${400*unit}vmin) rotateX(${y*30+66}deg) rotateZ(${-x*420+40}deg) translateZ(${-14*unit}vmin)`;
-    };
-    const mouseDownFunc = () => b.addEventListener("mousemove", moveFunc);
-    const mouseUpFunc = () => b.removeEventListener("mousemove", moveFunc);
-    const playFunc = () => {
-        h.classList.toggle("is-main-active");
-        a.loop = true;
-        if (a.paused) a.play();
-        else { a.pause(); a.currentTime = 0; }
-        mirrorContent.classList.toggle('is-hidden');
-        curiousContent.classList.toggle('is-hidden');
-    };
-    leftPanel.addEventListener("mousedown", mouseDownFunc);
-    b.addEventListener("mouseup", mouseUpFunc);
-    block.addEventListener("click", playFunc);
-
-    // --- PART 2: Get all other DOM Elements ---
+    // --- Get all DOM Elements ---
     const sensorDataDiv = document.getElementById('sensor-data');
     const turnOnButton = document.getElementById('turn-on');
     const turnOffButton = document.getElementById('turn-off');
@@ -42,34 +48,24 @@ document.addEventListener('DOMContentLoaded', function() {
     const raindropContainer = document.getElementById('raindrop-container');
     const sunIcon = document.getElementById('sun-icon');
     const fireIcon = document.getElementById('fire-icon');
-    const videoElement = document.getElementById('input-video');
-    const canvasElement = document.getElementById('output-canvas');
-    const canvasCtx = canvasElement.getContext('2d');
-    let isRaining = false;
 
-    // --- PART 3: REAL-TIME SENSOR DATA WITH WEBSOCKETS ---
-    const socket = io();
-
-    socket.on('connect', () => {
-        console.log('Connected to WebSocket server!');
-        fetch('/get_initial_data')
+    // --- SENSOR DATA POLLING ---
+    function fetchSensorData() {
+        fetch('/get_sensor_data')
             .then(response => response.json())
             .then(data => {
-                console.log('Received initial sensor data:', data);
                 updateSensorUI(data);
+            })
+            .catch(error => {
+                console.error('Error fetching sensor data:', error);
+                const errorHtml = '<p class="sensor-reading"><span class="sensor-label">Status:</span> <span class="sensor-value">Connection Error</span></p>';
+                sensorDataDiv.innerHTML = errorHtml;
+                mirrorSensorDiv.innerHTML = '<p>Connection Lost</p>';
             });
-    });
-
-    socket.on('sensor_update', (data) => {
-        console.log('Received sensor update:', data);
-        updateSensorUI(data);
-    });
-    
-    socket.on('disconnect', () => {
-        console.log('Disconnected from WebSocket server.');
-    });
+    }
 
     function updateSensorUI(data) {
+        // Update Right Panel (Control Panel)
         let rightPanelContent = '';
         if (!data || Object.keys(data).length === 0) {
             rightPanelContent = '<p class="sensor-reading"><span class="sensor-label">Status:</span> <span class="sensor-value">Waiting for data...</span></p>';
@@ -82,6 +78,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         sensorDataDiv.innerHTML = rightPanelContent;
 
+        // Update Left Panel (3D Mirror)
         let mirrorContentText = '';
         if (!data || Object.keys(data).length === 0) {
             mirrorContentText = '<p>Connecting...</p>';
@@ -122,7 +119,7 @@ document.addEventListener('DOMContentLoaded', function() {
         raindropContainer.innerHTML = "";
     }
     
-    // --- PART 4: VOICE AND MANUAL COMMANDS ---
+    // --- MANUAL COMMANDS ---
     function sendCommand(commandValue) {
         const formData = new FormData();
         formData.append('command', commandValue);
@@ -130,6 +127,7 @@ document.addEventListener('DOMContentLoaded', function() {
             .catch(error => console.error('Error sending command:', error));
     }
     
+    // --- VOICE CONTROL ---
     let mediaRecorder;
     let audioChunks = [];
     let audioContext;
@@ -189,97 +187,13 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
-    // --- PART 5: MEDIAPIPE GESTURE RECOGNITION ---
-    const TIP_IDS = [4, 8, 12, 16, 20];
-    const WINDOW_SIZE = 15;
-    const REQUIRED_FRACTION = 0.7;
-    let actionWindow = [];
-    let lastStableAction = '';
-    let lastCommandTime = 0;
-    function sendGestureCommand(action) {
-        if (Date.now() - lastCommandTime < 3000) return;
-        lastCommandTime = Date.now();
-        fetch('/gesture_command', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: action })
-        }).catch(err => console.error('Error sending gesture command:', err));
-    }
-    function fingerStates(landmarks, handedLabel) {
-        const fingers = [0, 0, 0, 0, 0];
-        const thumbTip = landmarks[TIP_IDS[0]];
-        const thumbIp = landmarks[TIP_IDS[0] - 1];
-        fingers[0] = (handedLabel === 'Right' ? thumbTip.x < thumbIp.x : thumbTip.x > thumbIp.x) ? 1 : 0;
-        for (let i = 1; i < 5; i++) {
-            fingers[i] = (landmarks[TIP_IDS[i]].y < landmarks[TIP_IDS[i] - 2].y) ? 1 : 0;
-        }
-        return fingers;
-    }
-    function classifyHand(landmarks, handedLabel) {
-        const up = fingerStates(landmarks, handedLabel).reduce((a, b) => a + b, 0);
-        if (up >= 4) return 'Open';
-        if (up === 0) return 'Fist';
-        return 'Other';
-    }
-    function decideAction(perHandClasses) {
-        if (perHandClasses.length !== 2) return '';
-        const openCount = perHandClasses.filter(c => c === 'Open').length;
-        const fistCount = perHandClasses.filter(c => c === 'Fist').length;
-        if (openCount === 2) return 'ON';
-        if (fistCount === 2) return 'OFF';
-        return '';
-    }
-    function onResults(results) {
-        canvasCtx.save();
-        canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
-        canvasCtx.translate(canvasElement.width, 0);
-        canvasCtx.scale(-1, 1);
-        canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
-        const perHandClasses = [];
-        if (results.multiHandLandmarks && results.multiHandedness) {
-            for (let i = 0; i < results.multiHandLandmarks.length; i++) {
-                const landmarks = results.multiHandLandmarks[i];
-                const handedness = results.multiHandedness[i];
-                drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, { color: '#00FF00', lineWidth: 5 });
-                drawLandmarks(canvasCtx, landmarks, { color: '#FF0000', lineWidth: 2 });
-                perHandClasses.push(classifyHand(landmarks, handedness.label));
-            }
-        }
-        const actionNow = decideAction(perHandClasses);
-        actionWindow.push(actionNow || '');
-        if (actionWindow.length > WINDOW_SIZE) actionWindow.shift();
-        const counts = actionWindow.reduce((acc, val) => { if (val) acc[val] = (acc[val] || 0) + 1; return acc; }, {});
-        let stableAction = '';
-        if (Object.keys(counts).length > 0) {
-            const topAction = Object.keys(counts).reduce((a, b) => counts[a] > counts[b] ? a : b);
-            if (counts[topAction] >= Math.floor(REQUIRED_FRACTION * actionWindow.length)) {
-                stableAction = topAction;
-            }
-        }
-        if (stableAction && stableAction !== lastStableAction) {
-            lastStableAction = stableAction;
-            sendGestureCommand(stableAction);
-        } else if (!stableAction) {
-            lastStableAction = '';
-        }
-        if (lastStableAction) {
-             canvasCtx.scale(-1, 1);
-             canvasCtx.fillStyle = "red";
-             canvasCtx.font = "bold 30px 'Share Tech'";
-             canvasCtx.textAlign = "center";
-             canvasCtx.fillText(lastStableAction === 'ON' ? 'ALL DEVICES ON' : 'ALL DEVICES OFF', -canvasElement.width / 2, 40);
-        }
-        canvasCtx.restore();
-    }
-    const hands = new Hands({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}` });
-    hands.setOptions({ maxNumHands: 2, modelComplexity: 1, minDetectionConfidence: 0.7, minTrackingConfidence: 0.7 });
-    hands.onResults(onResults);
-    const camera = new Camera(videoElement, { onFrame: async () => await hands.send({ image: videoElement }), width: 480, height: 360 });
-    camera.start();
-
     // --- ATTACH ALL EVENT LISTENERS ---
     turnOnButton.addEventListener('click', () => sendCommand(1));
     turnOffButton.addEventListener('click', () => sendCommand(0));
     startRecordingButton.addEventListener('click', startRecording);
     stopRecordingButton.addEventListener('click', stopRecording);
+
+    // Initial data fetch and start the polling interval
+    fetchSensorData();
+    setInterval(fetchSensorData, 2000); // Poll every 2 seconds
 });

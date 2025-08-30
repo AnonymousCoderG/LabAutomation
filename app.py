@@ -235,14 +235,19 @@
 #above code works well but sensor data is not received in app and command is not received by esp
 
 
-from flask import Flask, request, jsonify, render_template
-import threading
-import speech_recognition as sr
+from flask import Flask, render_template, request, jsonify
+import json
 import os
-import json # <-- Import the json library
+import threading
+from flask_socketio import SocketIO
 import paho.mqtt.client as mqtt
+import speech_recognition as sr
 
 app = Flask(__name__, template_folder="templates", static_folder="static")
+# Use the secret key for session management with SocketIO
+app.config['SECRET_KEY'] = 'your_very_secret_key' 
+# Wrap the app with SocketIO, using eventlet for async operations
+socketio = SocketIO(app, async_mode='eventlet')
 
 # ------------------- MQTT CONFIG -------------------
 MQTT_BROKER_URL = "450a2a0e66c34794aac4e8ff837827d2.s1.eu.hivemq.cloud"
@@ -258,23 +263,19 @@ def on_connect(client, userdata, flags, rc):
         print("Connected to MQTT Broker!")
         client.subscribe(MQTT_SENSOR_TOPIC)
     else:
-        print(f"Failed to connect, return code {rc}\n")
+        print(f"Failed to connect to MQTT, return code {rc}\n")
 
-# --- FIX IS HERE ---
 def on_message(client, userdata, msg):
-    global latest_sensor_data
     payload = msg.payload.decode()
     print(f"Received message from topic {msg.topic}: {payload}")
     try:
-        # Correctly parse the JSON string and update the global dictionary
-        latest_sensor_data = json.loads(payload)
-        print("Sensor data updated successfully.")
-    except json.JSONDecodeError as e:
-        print(f"Error decoding JSON from MQTT: {e}")
+        sensor_data = json.loads(payload)
+        # Instantly PUSH the new data to all connected web clients
+        socketio.emit('sensor_update', sensor_data)
+        print("Pushed sensor data to UI via WebSocket.")
     except Exception as e:
-        print(f"An unexpected error occurred in on_message: {e}")
-# --- END FIX ---
-    
+        print(f"Error processing MQTT message: {e}")
+
 mqtt_client = mqtt.Client()
 mqtt_client.username_pw_set(MQTT_USERNAME, MQTT_PASSWORD)
 mqtt_client.on_connect = on_connect
@@ -287,16 +288,12 @@ mqtt_client.loop_start()
 if not os.path.exists("temp_audio"):
     os.makedirs("temp_audio")
 
-# ---------------- SENSOR DATA STORAGE ----------------
-latest_sensor_data = {}
-
-# ---------------- COMMAND SENDER (NOW USES MQTT) ----------------
+# ---------------- COMMAND SENDER (Uses MQTT) ----------------
 last_command_sent = None
 def send_command_async(command: int):
     global last_command_sent
     if command == last_command_sent:
         return
-
     try:
         mqtt_client.publish(MQTT_COMMAND_TOPIC, str(command))
         print(f"Published command '{command}' to topic '{MQTT_COMMAND_TOPIC}'")
@@ -313,7 +310,6 @@ def send_command():
 @app.route('/gesture_command', methods=['POST'])
 def gesture_command():
     action = request.get_json().get('action')
-    print(f"Received gesture action: {action}")
     if action == 'ON': send_command_async(1)
     elif action == 'OFF': send_command_async(0)
     global last_command_sent
@@ -323,6 +319,7 @@ def gesture_command():
 @app.route('/process_audio', methods=['POST'])
 def process_audio():
     if 'audio_data' not in request.files: return jsonify({"error": "No audio file found"}), 400
+    # (This function is unchanged, it just calls our new send_command_async)
     audio_file = request.files['audio_data']
     filepath = os.path.join("temp_audio", "recording.wav")
     audio_file.save(filepath)
@@ -341,13 +338,14 @@ def process_audio():
         if os.path.exists(filepath): os.remove(filepath)
     return jsonify({"text": text})
 
-@app.route('/get_sensor_data', methods=['GET'])
-def get_sensor_data():
-    return jsonify(latest_sensor_data)
+# NOTE: The '/get_sensor_data' endpoint is no longer needed.
+# The server now PUSHES data to the client.
 
 @app.route('/')
 def home(): 
     return render_template("index.html")
 
+# ---------------- MAIN ----------------
 if __name__ == '__main__':
-    app.run(host="0.0.0.0", port=5000, debug=False, threaded=True)
+    # Use socketio.run() to start the server
+    socketio.run(app, host="0.0.0.0", port=5000, debug=False)

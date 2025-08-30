@@ -9,10 +9,14 @@
     <link href="https://fonts.googleapis.com/css2?family=Share+Tech&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     
-    <!-- ADD MEDIAPIPE SCRIPT TAGS -->
+    <!-- MediaPipe Script Tags -->
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+    <!-- ADD THIS LINE: Socket.IO Client Library -->
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+
 </head>
 <body>
 
@@ -23,21 +27,8 @@
                 <source src="https://rawcdn.githack.com/ricardoolivaalonso/Codepen/cc4996b50006214d2f3a1e8059bee90a7455d298/Space/audio.mp3" type="audio/mpeg" />
             </audio>
             <div class="main" id="h">
-              <div class="shadows">
-                <div class="reflex reflex-04"></div>
-                <div class="shadow shadow-01"></div>
-                <div class="shadow shadow-02"></div>
-                <div class="reflex reflex-02"></div>
-                <div class="reflex reflex-03"></div>
-                <div class="light light-04"></div>
-                <div class="light light-01"></div>
-                <div class="light light-02"></div>
-                <div class="light light-03"></div>
-                <div class="light light-05"></div>
-                <div class="light light-06"></div>
-                <div class="light light-07"></div>
-                <div class="reflex reflex-01"></div>
-              </div>
+              <!-- All of your original 3D room structure HTML goes here. It is unchanged. -->
+              <div class="shadows"><div class="reflex reflex-04"></div><div class="shadow shadow-01"></div><div class="shadow shadow-02"></div><div class="reflex reflex-02"></div><div class="reflex reflex-03"></div><div class="light light-04"></div><div class="light light-01"></div><div class="light light-02"></div><div class="light light-03"></div><div class="light light-05"></div><div class="light light-06"></div><div class="light light-07"></div><div class="reflex reflex-01"></div></div>
               <div class="floor-bottom"><div class="floor-bottom__front face"></div><div class="floor-bottom__back face"></div><div class="floor-bottom__right face"></div><div class="floor-bottom__left face"></div><div class="floor-bottom__top face"></div><div class="floor-bottom__bottom face"></div></div>
               <div class="floor-a"><div class="floor-a__front face"></div><div class="floor-a__back face"></div><div class="floor-a__right face"></div><div class="floor-a__left face"></div></div>
               <div class="floor-b"><div class="floor-b__front face"></div><div class="floor-b__back face"></div><div class="floor-b__right face"></div><div class="floor-b__left face"></div></div>
@@ -93,7 +84,6 @@
                 <h1>Smart Room Control</h1>
                 <h2>Live Gesture Feed</h2>
                 
-                <!-- This container holds the hidden video and the visible canvas -->
                 <div class="video-container">
                     <video id="input-video" width="480" height="360" autoplay muted playsinline style="display: none;"></video>
                     <canvas id="output-canvas" width="480" height="360"></canvas>

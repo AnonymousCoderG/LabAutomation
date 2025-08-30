@@ -234,6 +234,9 @@
 
 #above code works well but sensor data is not received in app and command is not received by esp
 
+# --- IMPORTANT: This must be the very first line of your app.py ---
+import eventlet
+eventlet.monkey_patch()
 
 from flask import Flask, render_template, request, jsonify
 import json
@@ -244,12 +247,8 @@ import paho.mqtt.client as mqtt
 import speech_recognition as sr
 import time
 
-# --- Use eventlet for async operations, this is critical for production ---
-import eventlet
-eventlet.monkey_patch()
-
 app = Flask(__name__, template_folder="templates", static_folder="static")
-app.config['SECRET_KEY'] = 'your_very_secret_key' 
+app.config['SECRET_KEY'] = 'a_very_secret_and_random_key_for_security' 
 socketio = SocketIO(app, async_mode='eventlet')
 
 # ------------------- MQTT CONFIG -------------------
@@ -277,6 +276,7 @@ def on_message(client, userdata, msg):
     print(f"Received message from topic {msg.topic}: {payload}")
     try:
         latest_sensor_data = json.loads(payload)
+        # Use socketio.emit to push data to all connected clients
         socketio.emit('sensor_update', latest_sensor_data)
         print("Pushed sensor data to UI via WebSocket.")
     except Exception as e:
@@ -292,12 +292,12 @@ def mqtt_thread_function():
         try:
             print("Attempting to connect to MQTT broker...")
             mqtt_client.connect(MQTT_BROKER_URL, MQTT_BROKER_PORT, 60)
-            mqtt_client.loop_forever() # This is a blocking call
+            mqtt_client.loop_forever() # This is a blocking call that runs the client
         except Exception as e:
             print(f"MQTT connection failed: {e}. Retrying in 5 seconds...")
             time.sleep(5)
 
-# --- Start MQTT connection in a background thread ---
+# --- Start MQTT connection in a non-blocking background thread ---
 mqtt_thread = threading.Thread(target=mqtt_thread_function, daemon=True)
 mqtt_thread.start()
 
@@ -317,7 +317,7 @@ def send_command_async(command: int):
         print(f"Failed to publish to MQTT: {e}")
     last_command_sent = command
 
-# --- All Endpoints are correct and remain unchanged ---
+# --- Endpoints ---
 @app.route('/send_command', methods=['POST'])
 def send_command():
     send_command_async(int(request.form.get("command", 1)))
@@ -334,7 +334,6 @@ def gesture_command():
 
 @app.route('/process_audio', methods=['POST'])
 def process_audio():
-    # This function is unchanged
     if 'audio_data' not in request.files: return jsonify({"error": "No audio file found"}), 400
     audio_file = request.files['audio_data']
     filepath = os.path.join("temp_audio", "recording.wav")
@@ -354,7 +353,7 @@ def process_audio():
         if os.path.exists(filepath): os.remove(filepath)
     return jsonify({"text": text})
 
-# We add a new endpoint for the initial data load
+# Endpoint for the initial data load when a client first connects
 @app.route('/get_initial_data', methods=['GET'])
 def get_initial_data():
     return jsonify(latest_sensor_data)
@@ -365,4 +364,5 @@ def home():
 
 # ---------------- MAIN ----------------
 if __name__ == '__main__':
+    # Use socketio.run() to start the eventlet server
     socketio.run(app, host="0.0.0.0", port=5000, debug=False)

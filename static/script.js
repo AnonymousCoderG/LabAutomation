@@ -3,7 +3,7 @@
 	Original Image: https://www.artstation.com/artwork/vBYdY
 */
 
-// --- This section for the 3D house animation is unchanged ---
+// --- 3D house animation logic (unchanged) ---
 const b = document.body;
 const h = document.querySelector("#h");
 const leftPanel = document.querySelector(".left-panel");
@@ -33,8 +33,7 @@ const playFunc = () => {
 leftPanel.addEventListener("mousedown", mouseDownFunc);
 b.addEventListener("mouseup", mouseUpFunc);
 block.addEventListener("click", playFunc);
-// --- End 3D House Animation Logic ---
-
+// --- End 3D House Logic ---
 
 document.addEventListener('DOMContentLoaded', function() {
     // --- Get all DOM Elements ---
@@ -57,7 +56,6 @@ document.addEventListener('DOMContentLoaded', function() {
 
     socket.on('connect', () => {
         console.log('Connected to WebSocket server!');
-        // Request initial data once connected
         fetch('/get_initial_data')
             .then(response => response.json())
             .then(data => {

@@ -1,9 +1,9 @@
 
 
 flask
-SpeechRecognition==3.9.0
-gunicorn
-requests
-paho-mqtt
 flask-socketio
 eventlet
+gunicorn
+paho-mqtt
+speechrecognition
+requests

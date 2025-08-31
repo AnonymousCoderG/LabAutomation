@@ -252,10 +252,10 @@ socketio = SocketIO(app, async_mode='eventlet')
 
 # ------------------- MQTT CONFIG -------------------
 # --- IMPORTANT: FILL THESE IN FROM YOUR HIVEMQ CLOUD DASHBOARD ---
-MQTT_BROKER_URL = "your-cluster-url.s1.eu.hivemq.cloud"
+MQTT_BROKER_URL = "450a2a0e66c34794aac4e8ff837827d2.s1.eu.hivemq.cloud"
 MQTT_BROKER_PORT = 8883
-MQTT_USERNAME = "your_username"
-MQTT_PASSWORD = "your_password"
+MQTT_USERNAME = "lofhost"
+MQTT_PASSWORD = "LOF@123g"
 MQTT_COMMAND_TOPIC = "home/room/command"
 MQTT_SENSOR_TOPIC = "home/room/sensors"
 

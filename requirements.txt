@@ -1,9 +1,7 @@
 flask
-pyserial
-SpeechRecognition==3.9.0
+flask-socketio
+eventlet
 gunicorn
-requests
-opencv-python
-mediapipe
-numpy
 paho-mqtt
+SpeechRecognition==3.9.0
+requests

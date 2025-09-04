@@ -277,7 +277,8 @@ def on_message(client, userdata, msg):
     try:
         latest_sensor_data = json.loads(payload)
         # Use socketio.emit to push data to all connected clients
-        socketio.emit('sensor_update', latest_sensor_data, broadcast=True)
+        # NEW CODE (The Fix)
+        socketio.emit('sensor_update', latest_sensor_data, namespace='/')
         print("Pushed sensor data to UI via WebSocket.")
     except Exception as e:
         print(f"Error processing MQTT message: {e}")

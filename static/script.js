@@ -25,18 +25,32 @@ document.addEventListener('DOMContentLoaded', function() {
     };
     const mouseDownFunc = () => b.addEventListener("mousemove", moveFunc);
     const mouseUpFunc = () => b.removeEventListener("mousemove", moveFunc);
+    // const playFunc = () => {
+    //     h.classList.toggle("is-main-active");
+    //     a.loop = true;
+    //     if (a.paused) a.play();
+    //     else { a.pause(); a.currentTime = 0; }
+    //     mirrorContent.classList.toggle('is-hidden');
+    //     curiousContent.classList.toggle('is-hidden');
+    // };
     const playFunc = () => {
-        h.classList.toggle("is-main-active");
-        a.loop = true;
-        if (a.paused) a.play();
-        else { a.pause(); a.currentTime = 0; }
-        //mirrorContent.classList.toggle('is-hidden');
-        //curiousContent.classList.toggle('is-hidden');
-        // Keep mirror always visible
-mirrorContent.classList.remove('is-hidden');
-curiousContent.classList.add('is-hidden');
+    h.classList.toggle("is-main-active");
+    a.loop = true;
+    if (a.paused) a.play();
+    else { a.pause(); a.currentTime = 0; }
 
-    };
+    // Toggle between sensor data and "Be Curious"
+    if (mirrorContent.classList.contains('is-hidden')) {
+        // Show sensor data again
+        mirrorContent.classList.remove('is-hidden');
+        curiousContent.classList.add('is-hidden');
+    } else {
+        // Hide sensor data and show "Be Curious"
+        mirrorContent.classList.add('is-hidden');
+        curiousContent.classList.remove('is-hidden');
+    }
+};
+
     leftPanel.addEventListener("mousedown", mouseDownFunc);
     b.addEventListener("mouseup", mouseUpFunc);
     block.addEventListener("click", playFunc);

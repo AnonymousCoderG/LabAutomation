@@ -248,8 +248,8 @@ import time
 
 app = Flask(__name__, template_folder="templates", static_folder="static")
 app.config['SECRET_KEY'] = 'a_very_secret_and_random_key_for_security' 
-socketio = SocketIO(app, async_mode='eventlet')
-
+#socketio = SocketIO(app, async_mode='eventlet')
+socketio = SocketIO(app, async_mode='eventlet', cors_allowed_origins="*")
 # ------------------- MQTT CONFIG -------------------
 # --- IMPORTANT: FILL THESE IN FROM YOUR HIVEMQ CLOUD DASHBOARD ---
 MQTT_BROKER_URL = "450a2a0e66c34794aac4e8ff837827d2.s1.eu.hivemq.cloud"

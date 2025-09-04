@@ -30,8 +30,12 @@ document.addEventListener('DOMContentLoaded', function() {
         a.loop = true;
         if (a.paused) a.play();
         else { a.pause(); a.currentTime = 0; }
-        mirrorContent.classList.toggle('is-hidden');
-        curiousContent.classList.toggle('is-hidden');
+        //mirrorContent.classList.toggle('is-hidden');
+        //curiousContent.classList.toggle('is-hidden');
+        // Keep mirror always visible
+mirrorContent.classList.remove('is-hidden');
+curiousContent.classList.add('is-hidden');
+
     };
     leftPanel.addEventListener("mousedown", mouseDownFunc);
     b.addEventListener("mouseup", mouseUpFunc);

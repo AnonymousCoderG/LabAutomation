@@ -787,10 +787,10 @@ def process_audio():
             # Convert recognized text to lowercase for case-insensitive comparison
             processed_text = text.lower()
             
-            if processed_text == "please turn on the fan":
+            if processed_text == "turn on the fan":
                 print("ON command recognized.")
                 send_command_robust(1)
-            elif processed_text == "please turn off the fan":
+            elif processed_text == "turn off the fan":
                 print("OFF command recognized.")
                 send_command_robust(0)
             # --- END OF MODIFICATION ---

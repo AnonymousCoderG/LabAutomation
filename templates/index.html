@@ -2,19 +2,24 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Lab of future </title>
+    <title>Lab of future</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Share+Tech&display=swap" rel="stylesheet">
+    
+    <!-- Your original stylesheet -->
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    
+    <!-- ** ADD THIS NEW LINE FOR RESPONSIVE STYLES ** -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='responsive.css') }}">
     
     <!-- MediaPipe Script Tags -->
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
 
-    <!-- Socket.IO Client Library for real-time communication -->
+    <!-- Socket.IO is no longer used for sensors, but might be useful for other real-time features. Can be removed if not needed. -->
     <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
 
 </head>

@@ -1,0 +1,107 @@
+/* --- Responsive Design for All Screen Sizes --- */
+
+/* 
+ * =========================================
+ * Mobile Devices (Phones, up to 768px)
+ * =========================================
+ */
+@media (max-width: 768px) {
+    /* Change the main container to a vertical layout */
+    .split-container {
+        flex-direction: column;
+        height: auto; /* Allow content to determine height */
+    }
+
+    /* Make both panels take up the full width */
+    .left-panel,
+    .right-panel {
+        width: 100%;
+        height: auto; /* Adjust height automatically */
+        min-height: 100vh; /* Ensure each panel feels like a full page */
+    }
+
+    /* Adjust the 3D view to be less extreme on mobile */
+    .left-panel .main {
+        transform: perspective(400vmin) rotateX(75deg) rotateZ(40deg) translateZ(-14vmin) !important;
+    }
+    
+    /* Center the control panel content */
+    #controls-container {
+        padding: 20px;
+    }
+
+    h1 {
+        font-size: 2em; /* Slightly smaller title */
+    }
+
+    h2 {
+        font-size: 1.5em;
+    }
+
+    /* Make the video feed responsive */
+    .video-container {
+        width: 100%;
+        max-width: 480px; /* Prevent it from getting too big */
+        margin: 0 auto; /* Center it */
+    }
+
+    #output-canvas {
+        width: 100%;
+        height: auto; /* Maintain aspect ratio */
+    }
+
+    /* Stack the control buttons */
+    #controls-container button {
+        display: block;
+        width: 80%;
+        margin: 10px auto; /* Center buttons with space */
+        font-size: 1.1em;
+        padding: 15px;
+    }
+}
+
+/* 
+ * =========================================
+ * Tablet Devices (up to 1024px)
+ * =========================================
+ */
+@media (min-width: 769px) and (max-width: 1024px) {
+    /* On tablets, we can keep the split view but give controls more space */
+    .split-container {
+        flex-direction: row;
+    }
+
+    .left-panel {
+        width: 45%; /* Give less space to the 3D view */
+    }
+
+    .right-panel {
+        width: 55%; /* Give more space to controls */
+    }
+
+    #controls-container {
+        padding: 30px;
+    }
+
+    h1 {
+        font-size: 2.5em;
+    }
+}
+
+/* 
+ * =========================================
+ * Large Screens (TVs, very wide monitors)
+ * =========================================
+ */
+@media (min-width: 1800px) {
+    /* For very large screens, cap the width to maintain readability */
+    body {
+        font-size: 18px; /* Slightly increase base font size */
+    }
+
+    #controls-container {
+        max-width: 800px;
+        margin: 0 auto; /* Center the controls in the right panel */
+        padding-top: 5vh;
+    }
+}

@@ -634,27 +634,42 @@ document.addEventListener('DOMContentLoaded', function() {
     function updateSensorUI() { const data = lastKnownSensorData; let rightPanelContent = ''; if (!data || Object.keys(data).length === 0) { rightPanelContent = '<p class="sensor-reading"><span class="sensor-label">Status:</span> <span class="sensor-value">Waiting for data...</span></p>'; } else { rightPanelContent += `<p class="sensor-reading"><span class="sensor-label">Temperature:</span> <span class="sensor-value">${data.temperature || 'N/A'} °C</span></p>`; rightPanelContent += `<p class="sensor-reading"><span class="sensor-label">Humidity:</span> <span class="sensor-value">${data.humidity || 'N/A'} %</span></p>`; rightPanelContent += `<p class="sensor-reading"><span class="sensor-label">Rain Detected:</span> <span class="sensor-value">${data.isRaining || 'N/A'}</span></p>`; rightPanelContent += `<p class="sensor-reading"><span class="sensor-label">Fire Detected:</span> <span class="sensor-value">${data.fireDetected || 'N/A'}</span></p>`; rightPanelContent += `<p class="sensor-reading"><span class="sensor-label">Water Level:</span> <span class="sensor-value">${data.waterLevel || 'N/A'}</span></p>`; } if (connectionError) { rightPanelContent += `<p class="connection-status error">Connection lost. Retrying...</p>`; } sensorDataDiv.innerHTML = rightPanelContent; let mirrorContentText = ''; if (!data || Object.keys(data).length === 0) { mirrorContentText = '<p>Connecting...</p>'; sunIcon.style.display = 'none'; fireIcon.style.display = 'none'; clearRainEffect(); } else { mirrorContentText += `<p>Temp: ${data.temperature || 'N/A'} C</p>`; mirrorContentText += `<p>Hum: ${data.humidity || 'N/A'} %</p>`; mirrorContentText += `<p>Rain: ${data.isRaining || 'N/A'}</p>`; mirrorContentText += `<p>Fire: ${data.fireDetected || 'N/A'}</p>`; if (data.isRaining === 'Yes') createRainEffect(); else clearRainEffect(); sunIcon.style.display = (data.temperature > 20 && data.isRaining !== 'Yes') ? 'block' : 'none'; fireIcon.style.display = (data.fireDetected === 'Yes') ? 'block' : 'none'; } mirrorSensorDiv.innerHTML = mirrorContentText; }
     function createRainEffect() { if (isRaining) return; isRaining = true; let drops = ""; for (let i = 0; i < 30; i++) { const left = Math.floor(Math.random() * 100); const duration = Math.random() * 0.5 + 0.5; const delay = Math.random() * 1; drops += `<div class="raindrop" style="left: ${left}%; animation-duration: ${duration}s; animation-delay: ${delay}s;"></div>`; } raindropContainer.innerHTML = drops; }
     function clearRainEffect() { if (!isRaining) return; isRaining = false; raindropContainer.innerHTML = ""; }
-
-    // --- PART 4: VOICE COMMANDS (WITH TIMEOUT FIX) ---
+    
+    // --- PART 4: VOICE COMMANDS (REVERTED TO WORKING VERSION) ---
     let mediaRecorder;
     let audioChunks = [];
+    let audioContext;
+    function encodeWAV(samples, sampleRate) {
+        let buffer = new ArrayBuffer(44 + samples.length * 2);
+        let view = new DataView(buffer);
+        function writeString(view, offset, string) { for (let i = 0; i < string.length; i++) { view.setUint8(offset + i, string.charCodeAt(i)); } }
+        writeString(view, 0, 'RIFF'); view.setUint32(4, 36 + samples.length * 2, true); writeString(view, 8, 'WAVE'); writeString(view, 12, 'fmt '); view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, 1, true); view.setUint32(24, sampleRate, true); view.setUint32(28, sampleRate * 2, true); view.setUint16(32, 2, true); view.setUint16(34, 16, true); writeString(view, 36, 'data'); view.setUint32(40, samples.length * 2, true);
+        for (let i = 0; i < samples.length; i++) { view.setInt16(44 + i * 2, samples[i] * 0x7FFF, true); }
+        return new Blob([view], { type: 'audio/wav' });
+    }
     async function startRecording() {
         try {
             audioChunks = [];
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            mediaRecorder = new MediaRecorder(stream);
-            mediaRecorder.ondataavailable = event => {
-                audioChunks.push(event.data);
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            const source = audioContext.createMediaStreamSource(stream);
+            const processor = audioContext.createScriptProcessor(4096, 1, 1);
+            processor.onaudioprocess = (e) => audioChunks.push(new Float32Array(e.inputBuffer.getChannelData(0)));
+            source.connect(processor);
+            processor.connect(audioContext.destination);
+            mediaRecorder = {
+                stream: stream,
+                stop: () => {
+                    source.disconnect(); processor.disconnect(); audioContext.close();
+                    const fullBuffer = new Float32Array(audioChunks.reduce((acc, val) => acc + val.length, 0));
+                    let offset = 0; for(const chunk of audioChunks) { fullBuffer.set(chunk, offset); offset += chunk.length; }
+                    const audioBlob = encodeWAV(fullBuffer, audioContext.sampleRate);
+                    sendAudioToServer(audioBlob);
+                    stream.getTracks().forEach(track => track.stop());
+                }
             };
-            mediaRecorder.onstop = () => {
-                const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
-                sendAudioToServer(audioBlob);
-                stream.getTracks().forEach(track => track.stop());
-            };
-            mediaRecorder.start();
             voiceStatus.textContent = 'Status: Listening...';
-            startRecordingButton.disabled = true;
-            stopRecordingButton.disabled = false;
+            startRecordingButton.disabled = true; stopRecordingButton.disabled = false;
         } catch (err) {
             console.error("Error accessing microphone:", err);
             voiceStatus.textContent = 'Error: Could not access microphone.';
@@ -664,41 +679,28 @@ document.addEventListener('DOMContentLoaded', function() {
         if (mediaRecorder) {
             mediaRecorder.stop();
             voiceStatus.textContent = 'Status: Processing...';
+            mediaRecorder = null;
         }
     }
     async function sendAudioToServer(audioBlob) {
         const formData = new FormData();
         formData.append('audio_data', audioBlob, 'recording.wav');
-
-        // ** THE FIX: Abort controller for timeout **
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
-
+        const timeoutId = setTimeout(() => controller.abort(), 15000);
         try {
-            const response = await fetch('/process_audio', {
-                method: 'POST',
-                body: formData,
-                signal: controller.signal // Link controller to the fetch request
-            });
-            
-            clearTimeout(timeoutId); // Clear the timeout if fetch succeeds
-
-            if (!response.ok) {
-                throw new Error(`Server error: ${response.status}`);
-            }
+            const response = await fetch('/process_audio', { method: 'POST', body: formData, signal: controller.signal });
+            clearTimeout(timeoutId);
+            if (!response.ok) throw new Error(`Server error: ${response.status}`);
             const result = await response.json();
             voiceStatus.textContent = `Recognized: "${result.text}"`;
-
         } catch (err) {
             if (err.name === 'AbortError') {
-                console.error("Fetch aborted due to timeout.");
-                voiceStatus.textContent = 'Status: Request timed out. Please try again.';
+                voiceStatus.textContent = 'Status: Request timed out. Try again.';
             } else {
-                console.error("Error sending audio to server:", err);
                 voiceStatus.textContent = 'Error: Failed to process audio.';
             }
+            console.error("Error sending audio to server:", err);
         } finally {
-            // This block ALWAYS runs, even on timeout, preventing the UI from getting stuck
             startRecordingButton.disabled = false;
             stopRecordingButton.disabled = true;
         }

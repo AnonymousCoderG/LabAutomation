@@ -21,10 +21,10 @@
     /* ** THE FIX: Make the 3D view a manageable header ** */
     .left-panel {
         width: 100%;
-        height: 400px; /* Give the 3D view a fixed, visible height */
-        min-height: auto; /* Remove the old full-screen height rule */
+        height: 300px; /* REDUCE THIS VALUE from 400px to 300px */
+        min-height: auto;
+        overflow: hidden; /* Ensures the 3D model doesn't spill out */
     }
-    
     /* ** THE FIX: Let the control panel flow naturally below ** */
     .right-panel {
         width: 100%;

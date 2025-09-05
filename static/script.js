@@ -349,13 +349,11 @@ document.addEventListener('DOMContentLoaded', function() {
     const canvasCtx = canvasElement.getContext('2d');
     let isRaining = false;
 
-    // --- PART 3: REAL-TIME SENSOR DATA WITH WEBSOCKETS (UPDATED) ---
-    // Explicitly connect to the origin of the current page. This is more reliable in deployed environments.
+    // --- PART 3: REAL-TIME SENSOR DATA WITH WEBSOCKETS ---
     const socket = io.connect(window.location.origin);
 
     socket.on('connect', () => {
         console.log('Successfully connected to WebSocket server!');
-        // Fetch initial data to populate the UI immediately after connecting.
         fetch('/get_initial_data')
             .then(response => {
                 if (!response.ok) {
@@ -373,25 +371,20 @@ document.addEventListener('DOMContentLoaded', function() {
             });
     });
 
-    // This listener waits for 'sensor_update' events pushed from the server.
     socket.on('sensor_update', (data) => {
-        // This is a crucial log. Check your browser's developer console for this message.
         console.log('Received real-time sensor update via WebSocket:', data);
         updateSensorUI(data);
     });
 
-    // NEW: Handle connection errors explicitly.
     socket.on('connect_error', (error) => {
         console.error('WebSocket connection error:', error);
         sensorDataDiv.innerHTML = '<p class="sensor-reading"><span class="sensor-label">Error:</span> <span class="sensor-value">Could not connect to server.</span></p>';
     });
 
-    // Handle disconnections.
     socket.on('disconnect', () => {
         console.log('Disconnected from WebSocket server.');
         sensorDataDiv.innerHTML = '<p class="sensor-reading"><span class="sensor-label">Status:</span> <span class="sensor-value">Disconnected. Retrying...</span></p>';
     });
-
 
     function updateSensorUI(data) {
         let rightPanelContent = '';
@@ -595,7 +588,10 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         canvasCtx.restore();
     }
-    const hands = new Hands({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@medipe/hands/${file}` });
+
+    // THIS IS THE CORRECTED LINE
+    const hands = new Hands({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}` });
+
     hands.setOptions({ maxNumHands: 2, modelComplexity: 1, minDetectionConfidence: 0.7, minTrackingConfidence: 0.7 });
     hands.onResults(onResults);
     const camera = new Camera(videoElement, { onFrame: async () => await hands.send({ image: videoElement }), width: 480, height: 360 });

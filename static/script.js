@@ -640,7 +640,7 @@ document.addEventListener('DOMContentLoaded', function() {
     b.addEventListener("mouseup", mouseUpFunc);
     block.addEventListener("click", playFunc);
 
-    // --- PART 3: SENSOR DATA (Graceful Handling Logic - Unchanged) ---
+    // --- PART 3: SENSOR DATA (Unchanged) ---
     let lastKnownSensorData = {};
     let connectionError = false;
 
@@ -651,7 +651,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 return response.json();
             })
             .then(data => {
-                // console.log('Successfully fetched sensor data:', data); // You can uncomment this for debugging
                 lastKnownSensorData = data;
                 connectionError = false;
                 updateSensorUI();
@@ -703,18 +702,15 @@ document.addEventListener('DOMContentLoaded', function() {
     function clearRainEffect() { if (!isRaining) return; isRaining = false; raindropContainer.innerHTML = ""; }
     function sendCommand(commandValue) { const formData = new FormData(); formData.append('command', commandValue); fetch('/send_command', { method: 'POST', body: formData }).catch(error => console.error('Error sending command:', error)); }
     let mediaRecorder; let audioChunks = []; let audioContext;
-    function encodeWAV(samples, sampleRate) { let buffer = new ArrayBuffer(44 + samples.length * 2); let view = new DataView(buffer); function writeString(view, offset, string) { for (let i = 0; i < string.length; i++) { view.setUint8(offset + i, string.charCodeAt(i)); } } writeString(view, 0, 'RIFF'); view.setUint32(4, 36 + samples.length * 2, true); writeString(view, 8, 'WAVE'); view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, 1, true); view.setUint32(24, sampleRate, true); view.setUint32(28, sampleRate * 2, true); view.setUint16(32, 2, true); view.setUint16(34, 16, true); writeString(view, 36, 'data'); view.setUint32(40, samples.length * 2, true); for (let i = 0; i < samples.length; i++) { view.setInt16(44 + i * 2, samples[i] * 0x7FFF, true); } return new Blob([view], { type: 'audio/wav' }); }
+    function encodeWAV(samples, sampleRate) { let buffer = new ArrayBuffer(44 + samples.length * 2); let view = new DataView(buffer); function writeString(view, offset, string) { for (let i = 0; i < string.length; i++) { view.setUint8(offset + i, string.charCodeAt(i)); } } writeString(view, 0, 'RIFF'); view.setUint32(4, 36 + samples.length * 2, true); writeString(view, 8, 'WAVE'); view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, 1, true); view.setUint32(24, sampleRate, true); view.setUint32(28, sampleRate * 2, true); view.setUint16(32, 2, true); view.setUint16(34, 16, true); view.setUint32(40, samples.length * 2, true); for (let i = 0; i < samples.length; i++) { view.setInt16(44 + i * 2, samples[i] * 0x7FFF, true); } return new Blob([view], { type: 'audio/wav' }); }
     async function startRecording() { try { audioChunks = []; const stream = await navigator.mediaDevices.getUserMedia({ audio: true }); audioContext = new (window.AudioContext || window.webkitAudioContext)(); const source = audioContext.createMediaStreamSource(stream); const processor = audioContext.createScriptProcessor(4096, 1, 1); processor.onaudioprocess = (e) => audioChunks.push(new Float32Array(e.inputBuffer.getChannelData(0))); source.connect(processor); processor.connect(audioContext.destination); mediaRecorder = { stream: stream, stop: () => { source.disconnect(); processor.disconnect(); audioContext.close(); const fullBuffer = new Float32Array(audioChunks.reduce((acc, val) => acc + val.length, 0)); let offset = 0; for(const chunk of audioChunks) { fullBuffer.set(chunk, offset); offset += chunk.length; } const audioBlob = encodeWAV(fullBuffer, audioContext.sampleRate); sendAudioToServer(audioBlob); stream.getTracks().forEach(track => track.stop()); } }; voiceStatus.textContent = 'Status: Listening...'; startRecordingButton.disabled = true; stopRecordingButton.disabled = false; } catch (err) { console.error("Error accessing microphone:", err); voiceStatus.textContent = 'Error: Could not access microphone.'; } }
     function stopRecording() { if (mediaRecorder) { mediaRecorder.stop(); voiceStatus.textContent = 'Status: Processing...'; startRecordingButton.disabled = false; stopRecordingButton.disabled = true; mediaRecorder = null; } }
     async function sendAudioToServer(audioBlob) { const formData = new FormData(); formData.append('audio_data', audioBlob, 'recording.wav'); try { const response = await fetch('/process_audio', { method: 'POST', body: formData }); const result = await response.json(); voiceStatus.textContent = `Recognized: ${result.text}`; } catch (err) { console.error("Error sending audio to server:", err); voiceStatus.textContent = 'Error: Failed to send audio.'; } }
 
-    // --- PART 5: MEDIAPIPE GESTURE RECOGNITION (OPTIMIZED FOR RESPONSIVENESS) ---
+    // --- PART 5: MEDIAPIPE GESTURE RECOGNITION (FINAL POLISHED VERSION) ---
     const TIP_IDS = [4, 8, 12, 16, 20];
-
-    // ** THE FIX: Tuned these values for faster detection **
-    const WINDOW_SIZE = 10;       // Was 15
-    const REQUIRED_FRACTION = 0.6; // Was 0.7
-
+    const WINDOW_SIZE = 10;
+    const REQUIRED_FRACTION = 0.6;
     let actionWindow = [];
     let lastStableAction = '';
     let lastCommandTime = 0;
@@ -763,8 +759,10 @@ document.addEventListener('DOMContentLoaded', function() {
             lastStableAction = stableAction;
             sendGestureCommand(stableAction);
         } else if (!stableAction) {
+            // ** THE FINAL FIX: Instantly reset the action when the gesture is lost **
             lastStableAction = '';
         }
+
         if (lastStableAction) {
              canvasCtx.scale(-1, 1);
              canvasCtx.fillStyle = "red";
@@ -779,8 +777,8 @@ document.addEventListener('DOMContentLoaded', function() {
     hands.onResults(onResults);
     const camera = new Camera(videoElement, { onFrame: async () => await hands.send({ image: videoElement }), width: 480, height: 360 });
     camera.start();
-
-    // Fetch initial data right after camera starts
+    
+    // Initial data fetch
     fetchSensorData();
 
     // --- ATTACH ALL EVENT LISTENERS ---

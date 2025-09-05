@@ -5671,14 +5671,13 @@ body {
 
 
 
-/* --- Sensor Data Readability Fix --- */
+/* --- FINAL Sensor Data Readability Fix --- */
 #sensor-data {
     text-align: left;
     padding-left: 10px;
 }
 
 #sensor-data .sensor-reading {
-    color: #f0f0f0; /* A bright, readable off-white */
     font-size: 1.1em;
     margin: 8px 0;
     line-height: 1.5;
@@ -5686,6 +5685,11 @@ body {
 
 #sensor-data .sensor-label {
     font-weight: bold;
-    color: #999; /* Keep labels slightly dimmer to differentiate */
+    color: #a0a0a0; /* A readable, light grey for the labels */
     margin-right: 10px;
+}
+
+#sensor-data .sensor-value {
+    color: #ffffff !important; /* Bright white for the values. !important ensures this rule wins. */
+    font-weight: bold;
 }

@@ -515,6 +515,155 @@
 
 
 
+# import eventlet
+# eventlet.monkey_patch()
+
+# from flask import Flask, render_template, request, jsonify
+# import json
+# import os
+# import threading
+# from flask_socketio import SocketIO
+# import paho.mqtt.client as mqtt
+# import speech_recognition as sr
+# import time
+
+# app = Flask(__name__, template_folder="templates", static_folder="static")
+# socketio = SocketIO(app, async_mode='eventlet', cors_allowed_origins="*")
+
+# # --- Define the file path for sharing sensor data ---
+# SENSOR_DATA_FILE = 'latest_sensor_data.json'
+# with open(SENSOR_DATA_FILE, 'w') as f:
+#     json.dump({}, f)
+
+# # ------------------- MQTT CONFIG -------------------
+# MQTT_BROKER_URL = "450a2a0e66c34794aac4e8ff837827d2.s1.eu.hivemq.cloud"
+# MQTT_BROKER_PORT = 8883
+# MQTT_USERNAME = "lofhost"
+# MQTT_PASSWORD = "LOF@123g"
+# MQTT_COMMAND_TOPIC = "home/room/command"
+# MQTT_SENSOR_TOPIC = "home/room/sensors"
+
+# # ------------------- MQTT LISTENER (for sensor data) -------------------
+# listener_mqtt_client = mqtt.Client()
+
+# def on_connect(client, userdata, flags, rc):
+#     if rc == 0:
+#         print("Listener client connected to MQTT Broker!")
+#         client.subscribe(MQTT_SENSOR_TOPIC)
+#     else:
+#         print(f"Listener client failed to connect, return code {rc}\n")
+
+# def on_message(client, userdata, msg):
+#     payload = msg.payload.decode()
+#     print(f"Received message from topic {msg.topic}: {payload}")
+#     try:
+#         # ** THIS IS THE FIX: Corrected variable name with ONE underscore **
+#         sensor_data = json.loads(payload)
+#         with open(SENSOR_DATA_FILE, 'w') as f:
+#             json.dump(sensor_data, f)
+#         print(f"Successfully wrote sensor data to {SENSOR_DATA_FILE}")
+#     except Exception as e:
+#         print(f"Error processing MQTT message or writing to file: {e}")
+
+# def mqtt_listener_thread():
+#     listener_mqtt_client.username_pw_set(MQTT_USERNAME, MQTT_PASSWORD)
+#     listener_mqtt_client.on_connect = on_connect
+#     listener_mqtt_client.on_message = on_message
+#     listener_mqtt_client.tls_set(tls_version=mqtt.ssl.PROTOCOL_TLS)
+#     while True:
+#         try:
+#             print("Attempting to connect MQTT listener client...")
+#             listener_mqtt_client.connect(MQTT_BROKER_URL, MQTT_BROKER_PORT, 60)
+#             listener_mqtt_client.loop_forever()
+#         except Exception as e:
+#             print(f"MQTT listener connection failed: {e}. Retrying in 5 seconds...")
+#             time.sleep(5)
+
+# mqtt_thread = threading.Thread(target=mqtt_listener_thread, daemon=True)
+# mqtt_thread.start()
+
+# # --- Robust command sender (Unchanged) ---
+# def send_command_robust(command: int):
+#     try:
+#         print(f"Attempting to send command: {command}")
+#         publisher_client = mqtt.Client()
+#         publisher_client.username_pw_set(MQTT_USERNAME, MQTT_PASSWORD)
+#         publisher_client.tls_set(tls_version=mqtt.ssl.PROTOCOL_TLS)
+#         publisher_client.connect(MQTT_BROKER_URL, MQTT_BROKER_PORT, 60)
+#         publisher_client.loop_start()
+#         result = publisher_client.publish(MQTT_COMMAND_TOPIC, str(command))
+#         result.wait_for_publish()
+#         print(f"Publish result: {result.rc}. Message for command '{command}' was sent.")
+#         publisher_client.loop_stop()
+#         publisher_client.disconnect()
+#         print("Publisher client disconnected.")
+#     except Exception as e:
+#         print(f"FAILED to publish command to MQTT: {e}")
+
+# # --- Create temp audio directory ---
+# if not os.path.exists("temp_audio"):
+#     os.makedirs("temp_audio")
+
+# # ---------------- FLASK ENDPOINTS ----------------
+# @app.route('/send_command', methods=['POST'])
+# def send_command():
+#     command_val = int(request.form.get("command", 1))
+#     send_command_robust(command_val)
+#     return "Command sent!"
+
+# @app.route('/gesture_command', methods=['POST'])
+# def gesture_command():
+#     action = request.get_json().get('action')
+#     if action == 'ON':
+#         send_command_robust(1)
+#     elif action == 'OFF':
+#         send_command_robust(0)
+#     return jsonify({"status": "gesture command received"})
+
+# @app.route('/process_audio', methods=['POST'])
+# def process_audio():
+#     if 'audio_data' not in request.files: return jsonify({"error": "No audio file found"}), 400
+#     audio_file = request.files['audio_data']
+#     filepath = os.path.join("temp_audio", "recording.wav")
+#     audio_file.save(filepath)
+#     text = "Could not recognize audio."
+#     try:
+#         recognizer = sr.Recognizer()
+#         with sr.AudioFile(filepath) as source:
+#             audio_data = recognizer.record(source)
+#             text = recognizer.recognize_google(audio_data)
+#             print(f"Recognized: {text}")
+#             if "on" in text.lower():
+#                 send_command_robust(1)
+#             elif "off" in text.lower():
+#                 send_command_robust(0)
+#     except Exception as e:
+#         text = f"An error occurred: {e}"
+#     finally:
+#         if os.path.exists(filepath): os.remove(filepath)
+#     return jsonify({"text": text})
+
+# @app.route('/get_initial_data', methods=['GET'])
+# def get_initial_data():
+#     try:
+#         with open(SENSOR_DATA_FILE, 'r') as f:
+#             data = json.load(f)
+#             return jsonify(data)
+#     except (FileNotFoundError, json.JSONDecodeError):
+#         return jsonify({})
+
+# @app.route('/')
+# def home():
+#     return render_template("index.html")
+
+# # ---------------- MAIN ----------------
+# if __name__ == '__main__':
+#     socketio.run(app, host="0.0.0.0", port=5000, debug=False)
+
+
+
+#above code works with on and off command now we are changing this to please turn on/off the fan 
+
 import eventlet
 eventlet.monkey_patch()
 
@@ -557,7 +706,6 @@ def on_message(client, userdata, msg):
     payload = msg.payload.decode()
     print(f"Received message from topic {msg.topic}: {payload}")
     try:
-        # ** THIS IS THE FIX: Corrected variable name with ONE underscore **
         sensor_data = json.loads(payload)
         with open(SENSOR_DATA_FILE, 'w') as f:
             json.dump(sensor_data, f)
@@ -622,7 +770,8 @@ def gesture_command():
 
 @app.route('/process_audio', methods=['POST'])
 def process_audio():
-    if 'audio_data' not in request.files: return jsonify({"error": "No audio file found"}), 400
+    if 'audio_data' not in request.files:
+        return jsonify({"error": "No audio file found"}), 400
     audio_file = request.files['audio_data']
     filepath = os.path.join("temp_audio", "recording.wav")
     audio_file.save(filepath)
@@ -633,14 +782,25 @@ def process_audio():
             audio_data = recognizer.record(source)
             text = recognizer.recognize_google(audio_data)
             print(f"Recognized: {text}")
-            if "on" in text.lower():
+            
+            # --- THIS IS THE MODIFIED LOGIC ---
+            # Convert recognized text to lowercase for case-insensitive comparison
+            processed_text = text.lower()
+            
+            if processed_text == "please turn on the fan":
+                print("ON command recognized.")
                 send_command_robust(1)
-            elif "off" in text.lower():
+            elif processed_text == "please turn off the fan":
+                print("OFF command recognized.")
                 send_command_robust(0)
+            # --- END OF MODIFICATION ---
+            
     except Exception as e:
         text = f"An error occurred: {e}"
+        print(text)
     finally:
-        if os.path.exists(filepath): os.remove(filepath)
+        if os.path.exists(filepath):
+            os.remove(filepath)
     return jsonify({"text": text})
 
 @app.route('/get_initial_data', methods=['GET'])

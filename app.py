@@ -525,7 +525,7 @@ import threading
 from flask_socketio import SocketIO
 import paho.mqtt.client as mqtt
 import speech_recognition as sr
-import time # Make sure time is imported
+import time
 
 app = Flask(__name__, template_folder="templates", static_folder="static")
 socketio = SocketIO(app, async_mode='eventlet', cors_allowed_origins="*")
@@ -557,7 +557,8 @@ def on_message(client, userdata, msg):
     payload = msg.payload.decode()
     print(f"Received message from topic {msg.topic}: {payload}")
     try:
-        sensor__data = json.loads(payload)
+        # ** THIS IS THE FIX: Corrected variable name with ONE underscore **
+        sensor_data = json.loads(payload)
         with open(SENSOR_DATA_FILE, 'w') as f:
             json.dump(sensor_data, f)
         print(f"Successfully wrote sensor data to {SENSOR_DATA_FILE}")
@@ -575,45 +576,29 @@ def mqtt_listener_thread():
             listener_mqtt_client.connect(MQTT_BROKER_URL, MQTT_BROKER_PORT, 60)
             listener_mqtt_client.loop_forever()
         except Exception as e:
-            print(f"MQTT listener connection failed: {e}. Retrying in 2 seconds...")
-            time.sleep(2)
+            print(f"MQTT listener connection failed: {e}. Retrying in 5 seconds...")
+            time.sleep(5)
 
 mqtt_thread = threading.Thread(target=mqtt_listener_thread, daemon=True)
 mqtt_thread.start()
 
-
-# --- THE FINAL ROBUST FIX FOR SENDING COMMANDS ---
+# --- Robust command sender (Unchanged) ---
 def send_command_robust(command: int):
-    """
-    Creates a new, short-lived client that waits for the message to send
-    before disconnecting. This is the definitive fix.
-    """
     try:
         print(f"Attempting to send command: {command}")
         publisher_client = mqtt.Client()
         publisher_client.username_pw_set(MQTT_USERNAME, MQTT_PASSWORD)
         publisher_client.tls_set(tls_version=mqtt.ssl.PROTOCOL_TLS)
-        
         publisher_client.connect(MQTT_BROKER_URL, MQTT_BROKER_PORT, 60)
-
-        # ** THE FIX IS HERE **
-        # 1. Start a non-blocking network loop
         publisher_client.loop_start()
-
-        # 2. Publish the message
         result = publisher_client.publish(MQTT_COMMAND_TOPIC, str(command))
-        # Wait for the message to be sent
-        result.wait_for_publish() 
+        result.wait_for_publish()
         print(f"Publish result: {result.rc}. Message for command '{command}' was sent.")
-        
-        # 3. Stop the loop and disconnect
         publisher_client.loop_stop()
         publisher_client.disconnect()
         print("Publisher client disconnected.")
-
     except Exception as e:
         print(f"FAILED to publish command to MQTT: {e}")
-
 
 # --- Create temp audio directory ---
 if not os.path.exists("temp_audio"):
@@ -668,7 +653,7 @@ def get_initial_data():
         return jsonify({})
 
 @app.route('/')
-def home(): 
+def home():
     return render_template("index.html")
 
 # ---------------- MAIN ----------------

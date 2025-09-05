@@ -6,7 +6,7 @@
  * =========================================
  */
 @media (max-width: 768px) {
-    /* ** THE FIX: Allow the main page to scroll vertically on mobile ** */
+    /* Allow the main page to scroll vertically on mobile */
     html, body {
         overflow-y: auto !important; /* Allow scrolling */
         height: auto;
@@ -18,24 +18,27 @@
         height: auto; /* Allow content to grow */
     }
 
-    /* ** THE FIX: Make the 3D view a manageable header ** */
+    /* ** THE FIX: Make the 3D view container more flexible ** */
     .left-panel {
         width: 100%;
-        height: 300px; /* REDUCE THIS VALUE from 400px to 300px */
-        min-height: auto;
+        height: 40vh; /* Use viewport height for better scaling */
+        min-height: 300px; /* Prevent it from becoming too small */
         overflow: hidden; /* Ensures the 3D model doesn't spill out */
     }
-    /* ** THE FIX: Let the control panel flow naturally below ** */
+    
+    /* ** THE FIX: Adjust the 3D transform to be less extreme ** */
+    .left-panel .main {
+        /* Reduced rotateX from 75deg to 60deg to make the angle less steep. */
+        /* Adjusted perspective and translateZ to re-center the model in the new view. */
+        transform: perspective(800px) rotateX(60deg) rotateZ(40deg) translateZ(-12vmin) !important;
+    }
+
+    /* Let the control panel flow naturally below */
     .right-panel {
         width: 100%;
         height: auto; /* Height is determined by its content */
         min-height: auto; /* Remove the old full-screen height rule */
         padding-bottom: 50px; /* Add some space at the very bottom */
-    }
-
-    /* Adjust the 3D view to be less extreme on mobile */
-    .left-panel .main {
-        transform: perspective(400vmin) rotateX(75deg) rotateZ(40deg) translateZ(-14vmin) !important;
     }
     
     /* Center the control panel content */

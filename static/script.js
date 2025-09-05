@@ -590,14 +590,13 @@
 // });
 
 //above code works perfectly just updating it for handing sensor error fetching value error gracefully
-/*
-	Designed by: Alex Harris
-	Original Image: https://www.artstation.com/artwork/vBYdY
-*/
+
+
+
 
 document.addEventListener('DOMContentLoaded', function() {
 
-    // --- PART 1: 3D House Animation Logic (Unchanged) ---
+    // --- PART 1 & 2 (Unchanged) ---
     const b = document.body;
     const h = document.querySelector("#h");
     const leftPanel = document.querySelector(".left-panel");
@@ -605,7 +604,21 @@ document.addEventListener('DOMContentLoaded', function() {
     const a = document.querySelector("#a");
     const block = document.querySelector("#block");
     const mirrorContent = document.querySelector('.mirror-content');
-    const curiousContent = document.querySelector('.curios-content');
+    const curiousContent = document.querySelector('.curious-content');
+    const sensorDataDiv = document.getElementById('sensor-data');
+    const turnOnButton = document.getElementById('turn-on');
+    const turnOffButton = document.getElementById('turn-off');
+    const startRecordingButton = document.getElementById('start-recording');
+    const stopRecordingButton = document.getElementById('stop-recording');
+    const voiceStatus = document.getElementById('voice-status');
+    const mirrorSensorDiv = document.getElementById('mirror-sensor-data');
+    const raindropContainer = document.getElementById('raindrop-container');
+    const sunIcon = document.getElementById('sun-icon');
+    const fireIcon = document.getElementById('fire-icon');
+    const videoElement = document.getElementById('input-video');
+    const canvasElement = document.getElementById('output-canvas');
+    const canvasCtx = canvasElement.getContext('2d');
+    let isRaining = false;
 
     const moveFunc = (e) => {
         const rect = leftPanel.getBoundingClientRect();
@@ -627,58 +640,32 @@ document.addEventListener('DOMContentLoaded', function() {
     b.addEventListener("mouseup", mouseUpFunc);
     block.addEventListener("click", playFunc);
 
-    // --- PART 2: Get all other DOM Elements (Unchanged) ---
-    const sensorDataDiv = document.getElementById('sensor-data');
-    const turnOnButton = document.getElementById('turn-on');
-    const turnOffButton = document.getElementById('turn-off');
-    const startRecordingButton = document.getElementById('start-recording');
-    const stopRecordingButton = document.getElementById('stop-recording');
-    const voiceStatus = document.getElementById('voice-status');
-    const mirrorSensorDiv = document.getElementById('mirror-sensor-data');
-    const raindropContainer = document.getElementById('raindrop-container');
-    const sunIcon = document.getElementById('sun-icon');
-    const fireIcon = document.getElementById('fire-icon');
-    const videoElement = document.getElementById('input-video');
-    const canvasElement = document.getElementById('output-canvas');
-    const canvasCtx = canvasElement.getContext('2d');
-    let isRaining = false;
-
-    // --- PART 3: SENSOR DATA (WITH GRACEFUL ERROR HANDLING) ---
-    
-    // ** THE GRACEFUL HANDLING LOGIC STARTS HERE **
-    let lastKnownSensorData = {}; // Variable to hold the last good data
-    let connectionError = false;   // Flag to track the connection state
+    // --- PART 3: SENSOR DATA (Graceful Handling Logic - Unchanged) ---
+    let lastKnownSensorData = {};
+    let connectionError = false;
 
     function fetchSensorData() {
         fetch('/get_initial_data')
             .then(response => {
-                if (!response.ok) {
-                    // If we get a 502 or other error, this will trigger the .catch block
-                    throw new Error('Network response was not ok');
-                }
+                if (!response.ok) throw new Error('Network response was not ok');
                 return response.json();
             })
             .then(data => {
-                // SUCCESS!
                 console.log('Successfully fetched sensor data:', data);
-                lastKnownSensorData = data; // Store the new good data
-                connectionError = false; // Reset the error flag
-                updateSensorUI(); // Update the UI with the new data
+                lastKnownSensorData = data;
+                connectionError = false;
+                updateSensorUI();
             })
             .catch(error => {
-                // FAILURE!
                 console.error('Error fetching sensor data:', error);
-                connectionError = true; // Set the error flag
-                // **CRITICAL:** We call updateSensorUI again, but it will now use the old data
-                // and the error flag to show a graceful warning.
+                connectionError = true;
                 updateSensorUI();
             });
     }
-    
-    function updateSensorUI() {
-        const data = lastKnownSensorData; // Always work with the last known data
-        let rightPanelContent = '';
 
+    function updateSensorUI() {
+        const data = lastKnownSensorData;
+        let rightPanelContent = '';
         if (!data || Object.keys(data).length === 0) {
             rightPanelContent = '<p class="sensor-reading"><span class="sensor-label">Status:</span> <span class="sensor-value">Waiting for data...</span></p>';
         } else {
@@ -688,15 +675,10 @@ document.addEventListener('DOMContentLoaded', function() {
             rightPanelContent += `<p class="sensor-reading"><span class="sensor-label">Fire Detected:</span> <span class="sensor-value">${data.fireDetected || 'N/A'}</span></p>`;
             rightPanelContent += `<p class="sensor-reading"><span class="sensor-label">Water Level:</span> <span class="sensor-value">${data.waterLevel || 'N/A'}</span></p>`;
         }
-
-        // If there was an error, add a subtle warning message below the data
         if (connectionError) {
             rightPanelContent += `<p class="connection-status error">Connection lost. Retrying...</p>`;
         }
-        
         sensorDataDiv.innerHTML = rightPanelContent;
-
-        // The logic for the 3D panel mirror remains the same
         let mirrorContentText = '';
         if (!data || Object.keys(data).length === 0) {
             mirrorContentText = '<p>Connecting...</p>';
@@ -708,10 +690,8 @@ document.addEventListener('DOMContentLoaded', function() {
             mirrorContentText += `<p>Hum: ${data.humidity || 'N/A'} %</p>`;
             mirrorContentText += `<p>Rain: ${data.isRaining || 'N/A'}</p>`;
             mirrorContentText += `<p>Fire: ${data.fireDetected || 'N/A'}</p>`;
-            
             if (data.isRaining === 'Yes') createRainEffect();
             else clearRainEffect();
-            
             sunIcon.style.display = (data.temperature > 20 && data.isRaining !== 'Yes') ? 'block' : 'none';
             fireIcon.style.display = (data.fireDetected === 'Yes') ? 'block' : 'none';
         }
@@ -720,138 +700,43 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Immediately fetch data once when the page loads
     fetchSensorData();
-    // Then, set up an interval to automatically fetch data every 2 seconds (2000ms)
-    setInterval(fetchSensorData, 2000);
-    
-    // ... rest of the file is identical ...
-    
-    function createRainEffect() {
-        if (isRaining) return;
-        isRaining = true;
-        let drops = "";
-        for (let i = 0; i < 30; i++) {
-            const left = Math.floor(Math.random() * 100);
-            const duration = Math.random() * 0.5 + 0.5;
-            const delay = Math.random() * 1;
-            drops += `<div class="raindrop" style="left: ${left}%; animation-duration: ${duration}s; animation-delay: ${delay}s;"></div>`;
-        }
-        raindropContainer.innerHTML = drops;
-    }
 
-    function clearRainEffect() {
-        if (!isRaining) return;
-        isRaining = false;
-        raindropContainer.innerHTML = "";
-    }
-    
-    // --- PART 4: VOICE AND MANUAL COMMANDS (Unchanged) ---
-    function sendCommand(commandValue) {
-        const formData = new FormData();
-        formData.append('command', commandValue);
-        fetch('/send_command', { method: 'POST', body: formData })
-            .catch(error => console.error('Error sending command:', error));
-    }
-    
-    let mediaRecorder;
-    let audioChunks = [];
-    let audioContext;
-    function encodeWAV(samples, sampleRate) {
-        let buffer = new ArrayBuffer(44 + samples.length * 2);
-        let view = new DataView(buffer);
-        function writeString(view, offset, string) { for (let i = 0; i < string.length; i++) { view.setUint8(offset + i, string.charCodeAt(i)); } }
-        writeString(view, 0, 'RIFF'); view.setUint32(4, 36 + samples.length * 2, true); writeString(view, 8, 'WAVE'); view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, 1, true); view.setUint32(24, sampleRate, true); view.setUint32(28, sampleRate * 2, true); view.setUint16(32, 2, true); view.setUint16(34, 16, true); writeString(view, 36, 'data'); view.setUint32(40, samples.length * 2, true);
-        for (let i = 0; i < samples.length; i++) { view.setInt16(44 + i * 2, samples[i] * 0x7FFF, true); }
-        return new Blob([view], { type: 'audio/wav' });
-    }
-    async function startRecording() {
-        try {
-            audioChunks = [];
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            audioContext = new (window.AudioContext || window.webkitAudioContext)();
-            const source = audioContext.createMediaStreamSource(stream);
-            const processor = audioContext.createScriptProcessor(4096, 1, 1);
-            processor.onaudioprocess = (e) => audioChunks.push(new Float32Array(e.inputBuffer.getChannelData(0)));
-            source.connect(processor);
-            processor.connect(audioContext.destination);
-            mediaRecorder = {
-                stream: stream,
-                stop: () => {
-                    source.disconnect(); processor.disconnect(); audioContext.close();
-                    const fullBuffer = new Float32Array(audioChunks.reduce((acc, val) => acc + val.length, 0));
-                    let offset = 0; for(const chunk of audioChunks) { fullBuffer.set(chunk, offset); offset += chunk.length; }
-                    const audioBlob = encodeWAV(fullBuffer, audioContext.sampleRate);
-                    sendAudioToServer(audioBlob);
-                    stream.getTracks().forEach(track => track.stop());
-                }
-            };
-            voiceStatus.textContent = 'Status: Listening...';
-            startRecordingButton.disabled = true; stopRecordingButton.disabled = false;
-        } catch (err) {
-            console.error("Error accessing microphone:", err);
-            voiceStatus.textContent = 'Error: Could not access microphone.';
-        }
-    }
-    function stopRecording() {
-        if (mediaRecorder) {
-            mediaRecorder.stop();
-            voiceStatus.textContent = 'Status: Processing...';
-            startRecordingButton.disabled = false; stopRecordingButton.disabled = true; mediaRecorder = null;
-        }
-    }
-    async function sendAudioToServer(audioBlob) {
-        const formData = new FormData();
-        formData.append('audio_data', audioBlob, 'recording.wav');
-        try {
-            const response = await fetch('/process_audio', { method: 'POST', body: formData });
-            const result = await response.json();
-            voiceStatus.textContent = `Recognized: ${result.text}`;
-        } catch (err) {
-            console.error("Error sending audio to server:", err);
-            voiceStatus.textContent = 'Error: Failed to send audio.';
-        }
-    }
+    // --- PART 4: VOICE AND OTHER FUNCTIONS (Unchanged) ---
+    function createRainEffect() { if (isRaining) return; isRaining = true; let drops = ""; for (let i = 0; i < 30; i++) { const left = Math.floor(Math.random() * 100); const duration = Math.random() * 0.5 + 0.5; const delay = Math.random() * 1; drops += `<div class="raindrop" style="left: ${left}%; animation-duration: ${duration}s; animation-delay: ${delay}s;"></div>`; } raindropContainer.innerHTML = drops; }
+    function clearRainEffect() { if (!isRaining) return; isRaining = false; raindropContainer.innerHTML = ""; }
+    function sendCommand(commandValue) { const formData = new FormData(); formData.append('command', commandValue); fetch('/send_command', { method: 'POST', body: formData }).catch(error => console.error('Error sending command:', error)); }
+    let mediaRecorder; let audioChunks = []; let audioContext;
+    function encodeWAV(samples, sampleRate) { let buffer = new ArrayBuffer(44 + samples.length * 2); let view = new DataView(buffer); function writeString(view, offset, string) { for (let i = 0; i < string.length; i++) { view.setUint8(offset + i, string.charCodeAt(i)); } } writeString(view, 0, 'RIFF'); view.setUint32(4, 36 + samples.length * 2, true); writeString(view, 8, 'WAVE'); writeString(view, 12, 'fmt '); view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, 1, true); view.setUint32(24, sampleRate, true); view.setUint32(28, sampleRate * 2, true); view.setUint16(32, 2, true); view.setUint16(34, 16, true); writeString(view, 36, 'data'); view.setUint32(40, samples.length * 2, true); for (let i = 0; i < samples.length; i++) { view.setInt16(44 + i * 2, samples[i] * 0x7FFF, true); } return new Blob([view], { type: 'audio/wav' }); }
+    async function startRecording() { try { audioChunks = []; const stream = await navigator.mediaDevices.getUserMedia({ audio: true }); audioContext = new (window.AudioContext || window.webkitAudioContext)(); const source = audioContext.createMediaStreamSource(stream); const processor = audioContext.createScriptProcessor(4096, 1, 1); processor.onaudioprocess = (e) => audioChunks.push(new Float32Array(e.inputBuffer.getChannelData(0))); source.connect(processor); processor.connect(audioContext.destination); mediaRecorder = { stream: stream, stop: () => { source.disconnect(); processor.disconnect(); audioContext.close(); const fullBuffer = new Float32Array(audioChunks.reduce((acc, val) => acc + val.length, 0)); let offset = 0; for(const chunk of audioChunks) { fullBuffer.set(chunk, offset); offset += chunk.length; } const audioBlob = encodeWAV(fullBuffer, audioContext.sampleRate); sendAudioToServer(audioBlob); stream.getTracks().forEach(track => track.stop()); } }; voiceStatus.textContent = 'Status: Listening...'; startRecordingButton.disabled = true; stopRecordingButton.disabled = false; } catch (err) { console.error("Error accessing microphone:", err); voiceStatus.textContent = 'Error: Could not access microphone.'; } }
+    function stopRecording() { if (mediaRecorder) { mediaRecorder.stop(); voiceStatus.textContent = 'Status: Processing...'; startRecordingButton.disabled = false; stopRecordingButton.disabled = true; mediaRecorder = null; } }
+    async function sendAudioToServer(audioBlob) { const formData = new FormData(); formData.append('audio_data', audioBlob, 'recording.wav'); try { const response = await fetch('/process_audio', { method: 'POST', body: formData }); const result = await response.json(); voiceStatus.textContent = `Recognized: ${result.text}`; } catch (err) { console.error("Error sending audio to server:", err); voiceStatus.textContent = 'Error: Failed to send audio.'; } }
 
-    // --- PART 5: MEDIAPIPE GESTURE RECOGNITION (Unchanged) ---
+    // --- PART 5: MEDIAPIPE GESTURE RECOGNITION (OPTIMIZED) ---
     const TIP_IDS = [4, 8, 12, 16, 20];
     const WINDOW_SIZE = 15;
     const REQUIRED_FRACTION = 0.7;
     let actionWindow = [];
     let lastStableAction = '';
     let lastCommandTime = 0;
-    function sendGestureCommand(action) {
-        if (Date.now() - lastCommandTime < 3000) return;
-        lastCommandTime = Date.now();
-        fetch('/gesture_command', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: action })
-        }).catch(err => console.error('Error sending gesture command:', err));
-    }
-    function fingerStates(landmarks, handedLabel) {
-        const fingers = [0, 0, 0, 0, 0];
-        const thumbTip = landmarks[TIP_IDS[0]];
-        const thumbIp = landmarks[TIP_IDS[0] - 1];
-        fingers[0] = (handedLabel === 'Right' ? thumbTip.x < thumbIp.x : thumbTip.x > thumbIp.x) ? 1 : 0;
-        for (let i = 1; i < 5; i++) {
-            fingers[i] = (landmarks[TIP_IDS[i]].y < landmarks[TIP_IDS[i] - 2].y) ? 1 : 0;
-        }
-        return fingers;
-    }
-    function classifyHand(landmarks, handedLabel) {
-        const up = fingerStates(landmarks, handedLabel).reduce((a, b) => a + b, 0);
-        if (up >= 4) return 'Open';
-        if (up === 0) return 'Fist';
-        return 'Other';
-    }
-    function decideAction(perHandClasses) {
-        if (perHandClasses.length !== 2) return '';
-        const openCount = perHandClasses.filter(c => c === 'Open').length;
-        const fistCount = perHandClasses.filter(c => c === 'Fist').length;
-        if (openCount === 2) return 'ON';
-        if (fistCount === 2) return 'OFF';
-        return '';
-    }
+
+    // ** THE NEW, EFFICIENT POLLING LOGIC **
+    let lastFetchTime = 0;
+    const FETCH_INTERVAL = 2000; // Fetch every 2 seconds
+
+    function sendGestureCommand(action) { if (Date.now() - lastCommandTime < 3000) return; lastCommandTime = Date.now(); fetch('/gesture_command', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: action }) }).catch(err => console.error('Error sending gesture command:', err)); }
+    function fingerStates(landmarks, handedLabel) { const fingers = [0, 0, 0, 0, 0]; const thumbTip = landmarks[TIP_IDS[0]]; const thumbIp = landmarks[TIP_IDS[0] - 1]; fingers[0] = (handedLabel === 'Right' ? thumbTip.x < thumbIp.x : thumbTip.x > thumbIp.x) ? 1 : 0; for (let i = 1; i < 5; i++) { fingers[i] = (landmarks[TIP_IDS[i]].y < landmarks[TIP_IDS[i] - 2].y) ? 1 : 0; } return fingers; }
+    function classifyHand(landmarks, handedLabel) { const up = fingerStates(landmarks, handedLabel).reduce((a, b) => a + b, 0); if (up >= 4) return 'Open'; if (up === 0) return 'Fist'; return 'Other'; }
+    function decideAction(perHandClasses) { if (perHandClasses.length !== 2) return ''; const openCount = perHandClasses.filter(c => c === 'Open').length; const fistCount = perHandClasses.filter(c => c === 'Fist').length; if (openCount === 2) return 'ON'; if (fistCount === 2) return 'OFF'; return ''; }
+    
     function onResults(results) {
+        // ** THE OPTIMIZATION: Fetch data inside the animation loop **
+        const now = Date.now();
+        if (now - lastFetchTime > FETCH_INTERVAL) {
+            fetchSensorData();
+            lastFetchTime = now; // Update the timer
+        }
+
+        // The rest of the onResults function is for drawing and is unchanged
         canvasCtx.save();
         canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
         canvasCtx.translate(canvasElement.width, 0);

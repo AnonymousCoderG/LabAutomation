@@ -299,11 +299,9 @@
 	Original Image: https://www.artstation.com/artwork/vBYdY
 */
 
-// --- Wrap ALL application logic inside this event listener ---
-// This ensures all HTML is loaded before the script tries to find elements.
 document.addEventListener('DOMContentLoaded', function() {
 
-    // --- PART 1: 3D House Animation Logic ---
+    // --- PART 1: 3D House Animation Logic (Unchanged) ---
     const b = document.body;
     const h = document.querySelector("#h");
     const leftPanel = document.querySelector(".left-panel");
@@ -333,7 +331,7 @@ document.addEventListener('DOMContentLoaded', function() {
     b.addEventListener("mouseup", mouseUpFunc);
     block.addEventListener("click", playFunc);
 
-    // --- PART 2: Get all other DOM Elements ---
+    // --- PART 2: Get all other DOM Elements (Unchanged) ---
     const sensorDataDiv = document.getElementById('sensor-data');
     const turnOnButton = document.getElementById('turn-on');
     const turnOffButton = document.getElementById('turn-off');
@@ -349,42 +347,32 @@ document.addEventListener('DOMContentLoaded', function() {
     const canvasCtx = canvasElement.getContext('2d');
     let isRaining = false;
 
-    // --- PART 3: REAL-TIME SENSOR DATA WITH WEBSOCKETS ---
-    const socket = io.connect(window.location.origin);
-
-    socket.on('connect', () => {
-        console.log('Successfully connected to WebSocket server!');
-        fetch('/get_initial_data')
+    // --- PART 3: SENSOR DATA (NEW ROBUST POLLING METHOD) ---
+    
+    function fetchSensorData() {
+        fetch('/get_initial_data') // This endpoint on your server gives the latest data
             .then(response => {
                 if (!response.ok) {
-                    throw new Error(`Network response was not ok: ${response.statusText}`);
+                    throw new Error('Network response was not ok');
                 }
                 return response.json();
             })
             .then(data => {
-                console.log('Received initial sensor data via fetch:', data);
-                updateSensorUI(data);
+                console.log('Successfully fetched sensor data:', data); // You should see this in the browser console
+                updateSensorUI(data); // Update the visual display
             })
             .catch(error => {
-                console.error('Error fetching initial data:', error);
-                sensorDataDiv.innerHTML = '<p class="sensor-reading"><span class="sensor-label">Status:</span> <span class="sensor-value">Error loading initial data.</span></p>';
+                console.error('Error fetching sensor data:', error);
+                sensorDataDiv.innerHTML = `<p>Error fetching data from server.</p>`;
             });
-    });
+    }
 
-    socket.on('sensor_update', (data) => {
-        console.log('Received real-time sensor update via WebSocket:', data);
-        updateSensorUI(data);
-    });
+    // Immediately fetch data once when the page loads
+    fetchSensorData();
+    
+    // Then, set up an interval to automatically fetch data every 2 seconds (2000ms)
+    setInterval(fetchSensorData, 2000);
 
-    socket.on('connect_error', (error) => {
-        console.error('WebSocket connection error:', error);
-        sensorDataDiv.innerHTML = '<p class="sensor-reading"><span class="sensor-label">Error:</span> <span class="sensor-value">Could not connect to server.</span></p>';
-    });
-
-    socket.on('disconnect', () => {
-        console.log('Disconnected from WebSocket server.');
-        sensorDataDiv.innerHTML = '<p class="sensor-reading"><span class="sensor-label">Status:</span> <span class="sensor-value">Disconnected. Retrying...</span></p>';
-    });
 
     function updateSensorUI(data) {
         let rightPanelContent = '';
@@ -410,10 +398,10 @@ document.addEventListener('DOMContentLoaded', function() {
             mirrorContentText += `<p>Hum: ${data.humidity || 'N/A'} %</p>`;
             mirrorContentText += `<p>Rain: ${data.isRaining || 'N/A'}</p>`;
             mirrorContentText += `<p>Fire: ${data.fireDetected || 'N/A'}</p>`;
-
+            
             if (data.isRaining === 'Yes') createRainEffect();
             else clearRainEffect();
-
+            
             sunIcon.style.display = (data.temperature > 20 && data.isRaining !== 'Yes') ? 'block' : 'none';
             fireIcon.style.display = (data.fireDetected === 'Yes') ? 'block' : 'none';
         }
@@ -438,15 +426,15 @@ document.addEventListener('DOMContentLoaded', function() {
         isRaining = false;
         raindropContainer.innerHTML = "";
     }
-
-    // --- PART 4: VOICE AND MANUAL COMMANDS ---
+    
+    // --- PART 4: VOICE AND MANUAL COMMANDS (Unchanged) ---
     function sendCommand(commandValue) {
         const formData = new FormData();
         formData.append('command', commandValue);
         fetch('/send_command', { method: 'POST', body: formData })
             .catch(error => console.error('Error sending command:', error));
     }
-
+    
     let mediaRecorder;
     let audioChunks = [];
     let audioContext;
@@ -506,7 +494,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
-    // --- PART 5: MEDIAPIPE GESTURE RECOGNITION ---
+    // --- PART 5: MEDIAPIPE GESTURE RECOGNITION (Unchanged) ---
     const TIP_IDS = [4, 8, 12, 16, 20];
     const WINDOW_SIZE = 15;
     const REQUIRED_FRACTION = 0.7;
@@ -588,10 +576,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         canvasCtx.restore();
     }
-
-    // THIS IS THE CORRECTED LINE
     const hands = new Hands({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}` });
-
     hands.setOptions({ maxNumHands: 2, modelComplexity: 1, minDetectionConfidence: 0.7, minTrackingConfidence: 0.7 });
     hands.onResults(onResults);
     const camera = new Camera(videoElement, { onFrame: async () => await hands.send({ image: videoElement }), width: 480, height: 360 });

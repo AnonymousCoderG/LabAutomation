@@ -5693,3 +5693,13 @@ body {
     color: #ffffff !important; /* Bright white for the values. !important ensures this rule wins. */
     font-weight: bold;
 }
+
+
+/* --- Graceful Connection Error Style --- */
+.connection-status.error {
+    color: #ff9966; /* A gentle orange color */
+    font-size: 0.9em;
+    text-align: center;
+    margin-top: 15px;
+    font-style: italic;
+}

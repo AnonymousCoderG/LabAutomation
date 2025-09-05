@@ -596,7 +596,7 @@
 
 document.addEventListener('DOMContentLoaded', function() {
 
-    // --- PART 1 & 2 (Unchanged) ---
+    // --- PART 1 & 2: Get DOM Elements (Unchanged) ---
     const b = document.body;
     const h = document.querySelector("#h");
     const leftPanel = document.querySelector(".left-panel");
@@ -619,10 +619,24 @@ document.addEventListener('DOMContentLoaded', function() {
     const canvasElement = document.getElementById('output-canvas');
     const canvasCtx = canvasElement.getContext('2d');
     let isRaining = false;
-    const moveFunc = (e) => { const rect = leftPanel.getBoundingClientRect(); let x = (e.clientX - rect.left) / rect.width - 0.5; let y = (e.clientY - rect.top) / rect.height - 0.5; h.style.transform = `perspective(${400*unit}vmin) rotateX(${y*30+66}deg) rotateZ(${-x*420+40}deg) translateZ(${-14*unit}vmin)`; };
+
+    // --- 3D House Animation Logic (Unchanged) ---
+    const moveFunc = (e) => {
+        const rect = leftPanel.getBoundingClientRect();
+        let x = (e.clientX - rect.left) / rect.width - 0.5;
+        let y = (e.clientY - rect.top) / rect.height - 0.5;
+        h.style.transform = `perspective(${400*unit}vmin) rotateX(${y*30+66}deg) rotateZ(${-x*420+40}deg) translateZ(${-14*unit}vmin)`;
+    };
     const mouseDownFunc = () => b.addEventListener("mousemove", moveFunc);
     const mouseUpFunc = () => b.removeEventListener("mousemove", moveFunc);
-    const playFunc = () => { h.classList.toggle("is-main-active"); a.loop = true; if (a.paused) a.play(); else { a.pause(); a.currentTime = 0; } mirrorContent.classList.toggle('is-hidden'); curiousContent.classList.toggle('is-hidden'); };
+    const playFunc = () => {
+        h.classList.toggle("is-main-active");
+        a.loop = true;
+        if (a.paused) a.play();
+        else { a.pause(); a.currentTime = 0; }
+        mirrorContent.classList.toggle('is-hidden');
+        curiousContent.classList.toggle('is-hidden');
+    };
     leftPanel.addEventListener("mousedown", mouseDownFunc);
     b.addEventListener("mouseup", mouseUpFunc);
     block.addEventListener("click", playFunc);
@@ -630,16 +644,110 @@ document.addEventListener('DOMContentLoaded', function() {
     // --- PART 3: SENSOR DATA (Unchanged) ---
     let lastKnownSensorData = {};
     let connectionError = false;
-    function fetchSensorData() { fetch('/get_initial_data').then(response => { if (!response.ok) throw new Error('Network response was not ok'); return response.json(); }).then(data => { lastKnownSensorData = data; connectionError = false; updateSensorUI(); }).catch(error => { console.error('Error fetching sensor data:', error); connectionError = true; updateSensorUI(); }); }
-    function updateSensorUI() { const data = lastKnownSensorData; let rightPanelContent = ''; if (!data || Object.keys(data).length === 0) { rightPanelContent = '<p class="sensor-reading"><span class="sensor-label">Status:</span> <span class="sensor-value">Waiting for data...</span></p>'; } else { rightPanelContent += `<p class="sensor-reading"><span class="sensor-label">Temperature:</span> <span class="sensor-value">${data.temperature || 'N/A'} °C</span></p>`; rightPanelContent += `<p class="sensor-reading"><span class="sensor-label">Humidity:</span> <span class="sensor-value">${data.humidity || 'N/A'} %</span></p>`; rightPanelContent += `<p class="sensor-reading"><span class="sensor-label">Rain Detected:</span> <span class="sensor-value">${data.isRaining || 'N/A'}</span></p>`; rightPanelContent += `<p class="sensor-reading"><span class="sensor-label">Fire Detected:</span> <span class="sensor-value">${data.fireDetected || 'N/A'}</span></p>`; rightPanelContent += `<p class="sensor-reading"><span class="sensor-label">Water Level:</span> <span class="sensor-value">${data.waterLevel || 'N/A'}</span></p>`; } if (connectionError) { rightPanelContent += `<p class="connection-status error">Connection lost. Retrying...</p>`; } sensorDataDiv.innerHTML = rightPanelContent; let mirrorContentText = ''; if (!data || Object.keys(data).length === 0) { mirrorContentText = '<p>Connecting...</p>'; sunIcon.style.display = 'none'; fireIcon.style.display = 'none'; clearRainEffect(); } else { mirrorContentText += `<p>Temp: ${data.temperature || 'N/A'} C</p>`; mirrorContentText += `<p>Hum: ${data.humidity || 'N/A'} %</p>`; mirrorContentText += `<p>Rain: ${data.isRaining || 'N/A'}</p>`; mirrorContentText += `<p>Fire: ${data.fireDetected || 'N/A'}</p>`; if (data.isRaining === 'Yes') createRainEffect(); else clearRainEffect(); sunIcon.style.display = (data.temperature > 20 && data.isRaining !== 'Yes') ? 'block' : 'none'; fireIcon.style.display = (data.fireDetected === 'Yes') ? 'block' : 'none'; } mirrorSensorDiv.innerHTML = mirrorContentText; }
+    function fetchSensorData() {
+        fetch('/get_initial_data')
+            .then(response => {
+                if (!response.ok) throw new Error('Network response was not ok');
+                return response.json();
+            })
+            .then(data => {
+                lastKnownSensorData = data;
+                connectionError = false;
+                updateSensorUI();
+            })
+            .catch(error => {
+                console.error('Error fetching sensor data:', error);
+                connectionError = true;
+                updateSensorUI();
+            });
+    }
+
+    function updateSensorUI() {
+        const data = lastKnownSensorData;
+        let rightPanelContent = '';
+        if (!data || Object.keys(data).length === 0) {
+            rightPanelContent = '<p class="sensor-reading"><span class="sensor-label">Status:</span> <span class="sensor-value">Waiting for data...</span></p>';
+        } else {
+            rightPanelContent += `<p class="sensor-reading"><span class="sensor-label">Temperature:</span> <span class="sensor-value">${data.temperature || 'N/A'} °C</span></p>`;
+            rightPanelContent += `<p class="sensor-reading"><span class="sensor-label">Humidity:</span> <span class="sensor-value">${data.humidity || 'N/A'} %</span></p>`;
+            rightPanelContent += `<p class="sensor-reading"><span class="sensor-label">Rain Detected:</span> <span class="sensor-value">${data.isRaining || 'N/A'}</span></p>`;
+            rightPanelContent += `<p class="sensor-reading"><span class="sensor-label">Fire Detected:</span> <span class="sensor-value">${data.fireDetected || 'N/A'}</span></p>`;
+            rightPanelContent += `<p class="sensor-reading"><span class="sensor-label">Water Level:</span> <span class="sensor-value">${data.waterLevel || 'N/A'}</span></p>`;
+        }
+        if (connectionError) {
+            rightPanelContent += `<p class="connection-status error">Connection lost. Retrying...</p>`;
+        }
+        sensorDataDiv.innerHTML = rightPanelContent;
+        let mirrorContentText = '';
+        if (!data || Object.keys(data).length === 0) {
+            mirrorContentText = '<p>Connecting...</p>';
+            sunIcon.style.display = 'none';
+            fireIcon.style.display = 'none';
+            clearRainEffect();
+        } else {
+            mirrorContentText += `<p>Temp: ${data.temperature || 'N/A'} C</p>`;
+            mirrorContentText += `<p>Hum: ${data.humidity || 'N/A'} %</p>`;
+            mirrorContentText += `<p>Rain: ${data.isRaining || 'N/A'}</p>`;
+            mirrorContentText += `<p>Fire: ${data.fireDetected || 'N/A'}</p>`;
+            if (data.isRaining === 'Yes') createRainEffect();
+            else clearRainEffect();
+            sunIcon.style.display = (data.temperature > 20 && data.isRaining !== 'Yes') ? 'block' : 'none';
+            fireIcon.style.display = (data.fireDetected === 'Yes') ? 'block' : 'none';
+        }
+        mirrorSensorDiv.innerHTML = mirrorContentText;
+    }
     function createRainEffect() { if (isRaining) return; isRaining = true; let drops = ""; for (let i = 0; i < 30; i++) { const left = Math.floor(Math.random() * 100); const duration = Math.random() * 0.5 + 0.5; const delay = Math.random() * 1; drops += `<div class="raindrop" style="left: ${left}%; animation-duration: ${duration}s; animation-delay: ${delay}s;"></div>`; } raindropContainer.innerHTML = drops; }
     function clearRainEffect() { if (!isRaining) return; isRaining = false; raindropContainer.innerHTML = ""; }
-    
+
     // --- PART 4: VOICE COMMANDS (WITH ROBUST UI FIX) ---
-    let mediaRecorder; let audioChunks = [];
-    async function startRecording() { try { audioChunks = []; const stream = await navigator.mediaDevices.getUserMedia({ audio: true }); mediaRecorder = new MediaRecorder(stream); mediaRecorder.ondataavailable = event => { audioChunks.push(event.data); }; mediaRecorder.onstop = () => { const audioBlob = new Blob(audioChunks, { type: 'audio/wav' }); sendAudioToServer(audioBlob); stream.getTracks().forEach(track => track.stop()); }; mediaRecorder.start(); voiceStatus.textContent = 'Status: Listening...'; startRecordingButton.disabled = true; stopRecordingButton.disabled = false; } catch (err) { console.error("Error accessing microphone:", err); voiceStatus.textContent = 'Error: Could not access microphone.'; } }
-    function stopRecording() { if (mediaRecorder) { mediaRecorder.stop(); voiceStatus.textContent = 'Status: Processing...'; } }
-    async function sendAudioToServer(audioBlob) { const formData = new FormData(); formData.append('audio_data', audioBlob, 'recording.wav'); try { const response = await fetch('/process_audio', { method: 'POST', body: formData }); if (!response.ok) throw new Error(`Server error: ${response.status}`); const result = await response.json(); voiceStatus.textContent = `Recognized: "${result.text}"`; } catch (err) { console.error("Error sending audio to server:", err); voiceStatus.textContent = 'Error: Failed to process audio.'; } finally { // ** THE FIX: This block ALWAYS runs, preventing the UI from getting stuck ** startRecordingButton.disabled = false; stopRecordingButton.disabled = true; } }
+    let mediaRecorder;
+    let audioChunks = [];
+    async function startRecording() {
+        try {
+            audioChunks = [];
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            mediaRecorder = new MediaRecorder(stream);
+            mediaRecorder.ondataavailable = event => {
+                audioChunks.push(event.data);
+            };
+            mediaRecorder.onstop = () => {
+                const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
+                sendAudioToServer(audioBlob);
+                stream.getTracks().forEach(track => track.stop());
+            };
+            mediaRecorder.start();
+            voiceStatus.textContent = 'Status: Listening...';
+            startRecordingButton.disabled = true;
+            stopRecordingButton.disabled = false;
+        } catch (err) {
+            console.error("Error accessing microphone:", err);
+            voiceStatus.textContent = 'Error: Could not access microphone.';
+        }
+    }
+    function stopRecording() {
+        if (mediaRecorder) {
+            mediaRecorder.stop();
+            voiceStatus.textContent = 'Status: Processing...';
+        }
+    }
+    async function sendAudioToServer(audioBlob) {
+        const formData = new FormData();
+        formData.append('audio_data', audioBlob, 'recording.wav');
+        try {
+            const response = await fetch('/process_audio', { method: 'POST', body: formData });
+            if (!response.ok) {
+                throw new Error(`Server error: ${response.status}`);
+            }
+            const result = await response.json();
+            voiceStatus.textContent = `Recognized: "${result.text}"`;
+        } catch (err) {
+            console.error("Error sending audio to server:", err);
+            voiceStatus.textContent = 'Error: Failed to process audio.';
+        } finally {
+            startRecordingButton.disabled = false;
+            stopRecordingButton.disabled = true;
+        }
+    }
 
     // --- PART 5: MEDIAPIPE GESTURE RECOGNITION (WITH RESPONSIVENESS FIX) ---
     const TIP_IDS = [4, 8, 12, 16, 20];
@@ -650,20 +758,84 @@ document.addEventListener('DOMContentLoaded', function() {
     let lastCommandTime = 0;
     let lastFetchTime = 0;
     const FETCH_INTERVAL = 2000;
-    function sendCommand(commandValue) { fetch('/send_command', { method: 'POST', body: new URLSearchParams({command: commandValue}) }).catch(error => console.error('Error sending command:', error)); }
-    function sendGestureCommand(action) { if (Date.now() - lastCommandTime < 2500) return; lastCommandTime = Date.now(); fetch('/gesture_command', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: action }) }).catch(err => console.error('Error sending gesture command:', err)); actionWindow = []; // ** THE FIX: Instantly reset the window after sending a command ** }
+    function sendCommand(commandValue) {
+        const formData = new FormData();
+        formData.append('command', commandValue);
+        fetch('/send_command', { method: 'POST', body: formData }).catch(error => console.error('Error sending command:', error));
+    }
+    function sendGestureCommand(action) {
+        if (Date.now() - lastCommandTime < 2500) return;
+        lastCommandTime = Date.now();
+        fetch('/gesture_command', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: action }) })
+            .catch(err => console.error('Error sending gesture command:', err));
+        actionWindow = []; // Instantly reset the window after sending a command
+    }
     function fingerStates(landmarks, handedLabel) { const fingers = [0, 0, 0, 0, 0]; const thumbTip = landmarks[TIP_IDS[0]]; const thumbIp = landmarks[TIP_IDS[0] - 1]; fingers[0] = (handedLabel === 'Right' ? thumbTip.x < thumbIp.x : thumbTip.x > thumbIp.x) ? 1 : 0; for (let i = 1; i < 5; i++) { fingers[i] = (landmarks[TIP_IDS[i]].y < landmarks[TIP_IDS[i] - 2].y) ? 1 : 0; } return fingers; }
     function classifyHand(landmarks, handedLabel) { const up = fingerStates(landmarks, handedLabel).reduce((a, b) => a + b, 0); if (up >= 4) return 'Open'; if (up === 0) return 'Fist'; return 'Other'; }
     function decideAction(perHandClasses) { if (perHandClasses.length !== 2) return ''; const openCount = perHandClasses.filter(c => c === 'Open').length; const fistCount = perHandClasses.filter(c => c === 'Fist').length; if (openCount === 2) return 'ON'; if (fistCount === 2) return 'OFF'; return ''; }
-    function onResults(results) { const now = Date.now(); if (now - lastFetchTime > FETCH_INTERVAL) { fetchSensorData(); lastFetchTime = now; } canvasCtx.save(); canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height); canvasCtx.translate(canvasElement.width, 0); canvasCtx.scale(-1, 1); canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height); const perHandClasses = []; if (results.multiHandLandmarks && results.multiHandedness) { for (let i = 0; i < results.multiHandLandmarks.length; i++) { const landmarks = results.multiHandLandmarks[i]; const handedness = results.multiHandedness[i]; drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, { color: '#00FF00', lineWidth: 5 }); drawLandmarks(canvasCtx, landmarks, { color: '#FF0000', lineWidth: 2 }); perHandClasses.push(classifyHand(landmarks, handedness.label)); } } const actionNow = decideAction(perHandClasses); actionWindow.push(actionNow || ''); if (actionWindow.length > WINDOW_SIZE) actionWindow.shift(); const counts = actionWindow.reduce((acc, val) => { if (val) acc[val] = (acc[val] || 0) + 1; return acc; }, {}); let stableAction = ''; if (Object.keys(counts).length > 0) { const topAction = Object.keys(counts).reduce((a, b) => counts[a] > counts[b] ? a : b); if (counts[topAction] >= Math.floor(REQUIRED_FRACTION * actionWindow.length)) { stableAction = topAction; } } if (stableAction && stableAction !== lastStableAction) { lastStableAction = stableAction; sendGestureCommand(stableAction); } else if (!stableAction) { lastStableAction = ''; } if (lastStableAction) { canvasCtx.scale(-1, 1); canvasCtx.fillStyle = "red"; canvasCtx.font = "bold 30px 'Share Tech'"; canvasCtx.textAlign = "center"; canvasCtx.fillText(lastStableAction === 'ON' ? 'ALL DEVICES ON' : 'ALL DEVICES OFF', -canvasElement.width / 2, 40); } canvasCtx.restore(); }
+    
+    function onResults(results) {
+        const now = Date.now();
+        if (now - lastFetchTime > FETCH_INTERVAL) {
+            fetchSensorData();
+            lastFetchTime = now;
+        }
+        canvasCtx.save();
+        canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+        canvasCtx.translate(canvasElement.width, 0);
+        canvasCtx.scale(-1, 1);
+        canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+        const perHandClasses = [];
+        if (results.multiHandLandmarks && results.multiHandedness) {
+            for (let i = 0; i < results.multiHandLandmarks.length; i++) {
+                const landmarks = results.multiHandLandmarks[i];
+                const handedness = results.multiHandedness[i];
+                drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, { color: '#00FF00', lineWidth: 5 });
+                drawLandmarks(canvasCtx, landmarks, { color: '#FF0000', lineWidth: 2 });
+                perHandClasses.push(classifyHand(landmarks, handedness.label));
+            }
+        }
+        const actionNow = decideAction(perHandClasses);
+        actionWindow.push(actionNow || '');
+        if (actionWindow.length > WINDOW_SIZE) actionWindow.shift();
+        const counts = actionWindow.reduce((acc, val) => { if (val) acc[val] = (acc[val] || 0) + 1; return acc; }, {});
+        let stableAction = '';
+        if (Object.keys(counts).length > 0) {
+            const topAction = Object.keys(counts).reduce((a, b) => counts[a] > counts[b] ? a : b);
+            if (counts[topAction] >= Math.floor(REQUIRED_FRACTION * actionWindow.length)) {
+                stableAction = topAction;
+            }
+        }
+        if (stableAction && stableAction !== lastStableAction) {
+            lastStableAction = stableAction;
+            sendGestureCommand(stableAction);
+        } else if (!stableAction) {
+            lastStableAction = '';
+        }
+        if (lastStableAction) {
+             canvasCtx.scale(-1, 1);
+             canvasCtx.fillStyle = "red";
+             canvasCtx.font = "bold 30px 'Share Tech'";
+             canvasCtx.textAlign = "center";
+             canvasCtx.fillText(lastStableAction === 'ON' ? 'ALL DEVICES ON' : 'ALL DEVICES OFF', -canvasElement.width / 2, 40);
+        }
+        canvasCtx.restore();
+    }
+    
+    // --- Initialize MediaPipe ---
     const hands = new Hands({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}` });
     hands.setOptions({ maxNumHands: 2, modelComplexity: 1, minDetectionConfidence: 0.7, minTrackingConfidence: 0.7 });
     hands.onResults(onResults);
+    
+    // --- Initialize Camera ---
     const camera = new Camera(videoElement, { onFrame: async () => await hands.send({ image: videoElement }), width: 480, height: 360 });
     camera.start();
+    
+    // --- Final Setup ---
     fetchSensorData();
     turnOnButton.addEventListener('click', () => sendCommand(1));
     turnOffButton.addEventListener('click', () => sendCommand(0));
     startRecordingButton.addEventListener('click', startRecording);
     stopRecordingButton.addEventListener('click', stopRecording);
-});
+
+}); // This is the closing tag for the main 'DOMContentLoaded' listener

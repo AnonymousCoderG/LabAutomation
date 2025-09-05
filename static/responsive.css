@@ -6,18 +6,31 @@
  * =========================================
  */
 @media (max-width: 768px) {
+    /* ** THE FIX: Allow the main page to scroll vertically on mobile ** */
+    html, body {
+        overflow-y: auto !important; /* Allow scrolling */
+        height: auto;
+    }
+
     /* Change the main container to a vertical layout */
     .split-container {
         flex-direction: column;
-        height: auto; /* Allow content to determine height */
+        height: auto; /* Allow content to grow */
     }
 
-    /* Make both panels take up the full width */
-    .left-panel,
+    /* ** THE FIX: Make the 3D view a manageable header ** */
+    .left-panel {
+        width: 100%;
+        height: 400px; /* Give the 3D view a fixed, visible height */
+        min-height: auto; /* Remove the old full-screen height rule */
+    }
+    
+    /* ** THE FIX: Let the control panel flow naturally below ** */
     .right-panel {
         width: 100%;
-        height: auto; /* Adjust height automatically */
-        min-height: 100vh; /* Ensure each panel feels like a full page */
+        height: auto; /* Height is determined by its content */
+        min-height: auto; /* Remove the old full-screen height rule */
+        padding-bottom: 50px; /* Add some space at the very bottom */
     }
 
     /* Adjust the 3D view to be less extreme on mobile */

@@ -181,8 +181,8 @@
 #     socketio.run(app, host="[::]", port=5000, debug=False)
 
 
-#app.py for lights 
-# app.py (Corrected for Voice & Gesture Clarity)
+
+# app.py (Updated for Light Control)
 
 import eventlet
 eventlet.monkey_patch()
@@ -214,21 +214,31 @@ MQTT_PASSWORD = "LOF@123g"
 MQTT_COMMAND_TOPIC = "home/room/command"
 MQTT_GATE_COMMAND_TOPIC = "home/room/gate"
 MQTT_SENSOR_TOPIC = "home/room/sensors"
-MQTT_LIGHT_COMMAND_TOPIC = "home/room/lights"
+MQTT_LIGHT_COMMAND_TOPIC = "home/room/lights" # <-- NEW: Topic for lights
 
-# ------------------- MQTT LISTENER (Correct & Unchanged) -------------------
+# ------------------- MQTT LISTENER (for sensor data) -------------------
 listener_mqtt_client = mqtt.Client()
+
 def on_connect(client, userdata, flags, rc):
-    if rc == 0: print("Listener client connected to MQTT Broker!"); client.subscribe(MQTT_SENSOR_TOPIC)
-    else: print(f"Listener client failed to connect, return code {rc}\n")
+    if rc == 0:
+        print("Listener client connected to MQTT Broker!")
+        client.subscribe(MQTT_SENSOR_TOPIC)
+    else:
+        print(f"Listener client failed to connect, return code {rc}\n")
+
 def on_message(client, userdata, msg):
+    payload = msg.payload.decode()
+    # This part remains focused only on sensor data
     if msg.topic == MQTT_SENSOR_TOPIC:
-        payload = msg.payload.decode()
         print(f"Received message from topic {msg.topic}: {payload}")
         try:
             sensor_data = json.loads(payload)
-            with open(SENSOR_DATA_FILE, 'w') as f: json.dump(sensor_data, f)
-        except Exception as e: print(f"Error processing MQTT message: {e}")
+            with open(SENSOR_DATA_FILE, 'w') as f:
+                json.dump(sensor_data, f)
+            print(f"Successfully wrote sensor data to {SENSOR_DATA_FILE}")
+        except Exception as e:
+            print(f"Error processing MQTT message or writing to file: {e}")
+
 def mqtt_listener_setup():
     listener_mqtt_client.username_pw_set(MQTT_USERNAME, MQTT_PASSWORD)
     listener_mqtt_client.on_connect = on_connect
@@ -241,11 +251,13 @@ def mqtt_listener_setup():
             listener_mqtt_client.loop_start()
             break
         except Exception as e:
-            print(f"MQTT listener connection failed: {e}. Retrying in 5s..."); time.sleep(5)
+            print(f"MQTT listener connection failed: {e}. Retrying in 5 seconds...")
+            time.sleep(5)
+
 mqtt_thread = threading.Thread(target=mqtt_listener_setup, daemon=True)
 mqtt_thread.start()
 
-# --- Robust command sender (Correct & Unchanged) ---
+# --- Robust command sender (Unchanged) ---
 def send_command_robust(topic: str, command: str):
     try:
         print(f"Attempting to send command '{command}' to topic '{topic}'")
@@ -258,11 +270,13 @@ def send_command_robust(topic: str, command: str):
         result.wait_for_publish()
         publisher_client.loop_stop()
         publisher_client.disconnect()
-    except Exception as e: print(f"FAILED to publish command to MQTT: {e}")
+    except Exception as e:
+        print(f"FAILED to publish command to MQTT: {e}")
 
-if not os.path.exists("temp_audio"): os.makedirs("temp_audio")
+if not os.path.exists("temp_audio"):
+    os.makedirs("temp_audio")
 
-# ---------------- FLASK ENDPOINTS (Unchanged) ----------------
+# ---------------- FLASK ENDPOINTS ----------------
 @app.route('/send_command', methods=['POST'])
 def send_command():
     command_val = request.form.get("command", "1")
@@ -272,25 +286,32 @@ def send_command():
 @app.route('/gesture_command', methods=['POST'])
 def gesture_command():
     action = request.get_json().get('action')
-    if action == 'ON': send_command_robust(MQTT_COMMAND_TOPIC, "1")
-    elif action == 'OFF': send_command_robust(MQTT_COMMAND_TOPIC, "0")
+    if action == 'ON':
+        send_command_robust(MQTT_COMMAND_TOPIC, "1")
+    elif action == 'OFF':
+        send_command_robust(MQTT_COMMAND_TOPIC, "0")
     return jsonify({"status": "fan gesture command received"})
 
 @app.route('/gate_gesture_command', methods=['POST'])
 def gate_gesture_command():
     action = request.get_json().get('action')
-    if action == 'OPEN_GATE': send_command_robust(MQTT_GATE_COMMAND_TOPIC, "OPEN")
-    elif action == 'CLOSE_GATE': send_command_robust(MQTT_GATE_COMMAND_TOPIC, "CLOSE")
+    if action == 'OPEN_GATE':
+        send_command_robust(MQTT_GATE_COMMAND_TOPIC, "OPEN")
+    elif action == 'CLOSE_GATE':
+        send_command_robust(MQTT_GATE_COMMAND_TOPIC, "CLOSE")
     return jsonify({"status": "gate gesture command received"})
 
+# --- NEW: ENDPOINT FOR LIGHT GESTURES ---
 @app.route('/light_gesture_command', methods=['POST'])
 def light_gesture_command():
     action = request.get_json().get('action')
-    if action == 'LIGHTS_ON': send_command_robust(MQTT_LIGHT_COMMAND_TOPIC, "LIGHTS_ON")
-    elif action == 'LIGHTS_OFF': send_command_robust(MQTT_LIGHT_COMMAND_TOPIC, "LIGHTS_OFF")
+    if action == 'LIGHTS_ON':
+        send_command_robust(MQTT_LIGHT_COMMAND_TOPIC, "LIGHTS_ON")
+    elif action == 'LIGHTS_OFF':
+        send_command_robust(MQTT_LIGHT_COMMAND_TOPIC, "LIGHTS_OFF")
     return jsonify({"status": "light gesture command received"})
 
-# --- UPDATED: VOICE PROCESSING FOR CLARITY ---
+# --- UPDATED: VOICE PROCESSING FOR LIGHTS ---
 @app.route('/process_audio', methods=['POST'])
 def process_audio():
     if 'audio_data' not in request.files: return jsonify({"error": "No audio file found"}), 400
@@ -305,32 +326,39 @@ def process_audio():
             text = recognizer.recognize_google(audio_data)
             print(f"Recognized: {text}")
             processed_text = text.lower()
-            
-            # Use 'elif' to ensure only one command is triggered
-            if "fan" in processed_text:
-                if "on" in processed_text: send_command_robust(MQTT_COMMAND_TOPIC, "1")
-                elif "off" in processed_text: send_command_robust(MQTT_COMMAND_TOPIC, "0")
-            elif "gate" in processed_text:
-                if "open" in processed_text: send_command_robust(MQTT_GATE_COMMAND_TOPIC, "OPEN")
-                elif "close" in processed_text: send_command_robust(MQTT_GATE_COMMAND_TOPIC, "CLOSE")
-            elif "light" in processed_text: # Catches "light" and "lights"
-                if "on" in processed_text: send_command_robust(MQTT_LIGHT_COMMAND_TOPIC, "LIGHTS_ON")
-                elif "off" in processed_text: send_command_robust(MQTT_LIGHT_COMMAND_TOPIC, "LIGHTS_OFF")
-                
-    except Exception as e: text = f"An error occurred: {e}"; print(text)
+            if "turn on the fan" in processed_text:
+                send_command_robust(MQTT_COMMAND_TOPIC, "1")
+            elif "turn off the fan" in processed_text:
+                send_command_robust(MQTT_COMMAND_TOPIC, "0")
+            elif "open the gate" in processed_text:
+                send_command_robust(MQTT_GATE_COMMAND_TOPIC, "OPEN")
+            elif "close the gate" in processed_text:
+                send_command_robust(MQTT_GATE_COMMAND_TOPIC, "CLOSE")
+            # --- NEW: Voice commands for lights ---
+            elif "turn on the light" in processed_text or "turn on the lights" in processed_text:
+                send_command_robust(MQTT_LIGHT_COMMAND_TOPIC, "LIGHTS_ON")
+            elif "turn off the light" in processed_text or "turn off the lights" in processed_text:
+                send_command_robust(MQTT_LIGHT_COMMAND_TOPIC, "LIGHTS_OFF")
+    except Exception as e:
+        text = f"An error occurred: {e}"
+        print(text)
     finally:
-        if os.path.exists(filepath): os.remove(filepath)
+        if os.path.exists(filepath):
+            os.remove(filepath)
     return jsonify({"text": text})
 
 @app.route('/get_initial_data', methods=['GET'])
 def get_initial_data():
     try:
-        with open(SENSOR_DATA_FILE, 'r') as f: data = json.load(f)
-        return jsonify(data)
-    except (FileNotFoundError, json.JSONDecodeError): return jsonify({})
+        with open(SENSOR_DATA_FILE, 'r') as f:
+            data = json.load(f)
+            return jsonify(data)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return jsonify({})
 
 @app.route('/')
-def home(): return render_template("index.html")
+def home():
+    return render_template("index.html")
 
 if __name__ == '__main__':
     socketio.run(app, host="[::]", port=5000, debug=False)

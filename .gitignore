@@ -69,6 +69,7 @@ appdeployed.py
 requirementsdeployed.txt
 templates/indexLaatest.html
 appLast.py
+static/scriptLast.js
 # Example 2: Ignoring files by name only (will ignore any file with this name)
 # Use this if you have multiple files named 'debug.log' in different folders, for example.
 # debug.log

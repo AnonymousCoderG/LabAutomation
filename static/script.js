@@ -204,10 +204,11 @@
 //above code is only for gate now below i have integrated light control 
 // script.js (Updated for Light Control)
 // script.js (Corrected for Speed and Stability)
+// script.js (Corrected with All Single-Hand Gestures)
 
 document.addEventListener('DOMContentLoaded', function() {
 
-    // --- PART 1 & 2: Get DOM Elements (Unchanged) ---
+    // --- PART 1, 2, 3, 4: Setup, UI, Sensors, and Voice (Unchanged) ---
     const b = document.body;
     const h = document.querySelector("#h");
     const leftPanel = document.querySelector(".left-panel");
@@ -237,8 +238,6 @@ document.addEventListener('DOMContentLoaded', function() {
     leftPanel.addEventListener("mousedown", mouseDownFunc);
     b.addEventListener("mouseup", mouseUpFunc);
     block.addEventListener("click", playFunc);
-
-    // --- PART 3 & 4: SENSOR DATA & VOICE (Unchanged) ---
     let lastKnownSensorData = {}; let connectionError = false; function fetchSensorData() { fetch('/get_initial_data').then(response => { if (!response.ok) throw new Error('Network response was not ok'); return response.json(); }).then(data => { lastKnownSensorData = data; connectionError = false; updateSensorUI(); }).catch(error => { console.error('Error fetching sensor data:', error); connectionError = true; updateSensorUI(); }); }
     function updateSensorUI() { const data = lastKnownSensorData; let rightPanelContent = ''; if (!data || Object.keys(data).length === 0) { rightPanelContent = '<p class="sensor-reading"><span class="sensor-label">Status:</span> <span class="sensor-value">Waiting for data...</span></p>'; } else { rightPanelContent += `<p class="sensor-reading"><span class="sensor-label">Temperature:</span> <span class="sensor-value">${data.temperature || 'N/A'} °C</span></p>`; rightPanelContent += `<p class="sensor-reading"><span class="sensor-label">Humidity:</span> <span class="sensor-value">${data.humidity || 'N/A'} %</span></p>`; rightPanelContent += `<p class="sensor-reading"><span class="sensor-label">Rain Detected:</span> <span class="sensor-value">${data.isRaining || 'N/A'}</span></p>`; rightPanelContent += `<p class="sensor-reading"><span class="sensor-label">Fire Detected:</span> <span class="sensor-value">${data.fireDetected || 'N/A'}</span></p>`; rightPanelContent += `<p class="sensor-reading"><span class="sensor-label">Water Level:</span> <span class="sensor-value">${data.waterLevel || 'N/A'}</span></p>`; } if (connectionError) { rightPanelContent += `<p class="connection-status error">Connection lost. Retrying...</p>`; } sensorDataDiv.innerHTML = rightPanelContent; let mirrorContentText = ''; if (!data || Object.keys(data).length === 0) { mirrorContentText = '<p>Connecting...</p>'; sunIcon.style.display = 'none'; fireIcon.style.display = 'none'; clearRainEffect(); } else { mirrorContentText += `<p>Temp: ${data.temperature || 'N/A'} C</p>`; mirrorContentText += `<p>Hum: ${data.humidity || 'N/A'} %</p>`; mirrorContentText += `<p>Rain: ${data.isRaining || 'N/A'}</p>`; mirrorContentText += `<p>Fire: ${data.fireDetected || 'N/A'}</p>`; if (data.isRaining === 'Yes') createRainEffect(); else clearRainEffect(); sunIcon.style.display = (data.temperature > 20 && data.isRaining !== 'Yes') ? 'block' : 'none'; fireIcon.style.display = (data.fireDetected === 'Yes') ? 'block' : 'none'; } mirrorSensorDiv.innerHTML = mirrorContentText; }
     function createRainEffect() { if (isRaining) return; isRaining = true; let drops = ""; for (let i = 0; i < 30; i++) { const left = Math.floor(Math.random() * 100); const duration = Math.random() * 0.5 + 0.5; const delay = Math.random() * 1; drops += `<div class="raindrop" style="left: ${left}%; animation-duration: ${duration}s; animation-delay: ${delay}s;"></div>`; } raindropContainer.innerHTML = drops; }
@@ -248,20 +247,15 @@ document.addEventListener('DOMContentLoaded', function() {
     function stopRecording() { if (mediaRecorder) { mediaRecorder.stop(); voiceStatus.textContent = 'Status: Processing...'; mediaRecorder = null; } }
     async function sendAudioToServer(audioBlob) { const formData = new FormData(); formData.append('audio_data', audioBlob, 'recording.wav'); const controller = new AbortController(); const timeoutId = setTimeout(() => controller.abort(), 15000); try { const response = await fetch('/process_audio', { method: 'POST', body: formData, signal: controller.signal }); clearTimeout(timeoutId); if (!response.ok) throw new Error(`Server error: ${response.status}`); const result = await response.json(); voiceStatus.textContent = `Recognized: "${result.text}"`; } catch (err) { if (err.name === 'AbortError') { voiceStatus.textContent = 'Status: Request timed out. Try again.'; } else { voiceStatus.textContent = 'Error: Failed to process audio.'; } console.error("Error sending audio to server:", err); } finally { startRecordingButton.disabled = false; stopRecordingButton.disabled = true; } }
 
-    // --- PART 5: MEDIAPIPE GESTURE RECOGNITION (UPDATED FOR STABILITY & SPEED) ---
+    // --- PART 5: MEDIAPIPE GESTURE RECOGNITION (RE-ENGINEERED) ---
     const TIP_IDS = [4, 8, 12, 16, 20];
-    const WINDOW_SIZE = 10;           // Faster response window
-    const REQUIRED_FRACTION = 0.7;    // Balanced strictness
+    const WINDOW_SIZE = 12;           // Balanced for speed
+    const REQUIRED_FRACTION = 0.75;   // Balanced for stability
     
-    let fanActionWindow = [];
-    let singleHandActionWindow = [];
-    let lastStableFanAction = '';
-    let lastStableSingleHandAction = '';
+    let actionWindow = [];
+    let lastStableAction = '';
     let lastCommandTime = 0;
-    const COMMAND_COOLDOWN = 2500; // 2.5 second cooldown
-    
-    // --- NEW: State tracker to detect changes in hand count ---
-    let previousHandCount = 0;
+    const COMMAND_COOLDOWN = 2500;
 
     let lastFetchTime = 0;
     const FETCH_INTERVAL = 2000;
@@ -293,26 +287,18 @@ document.addEventListener('DOMContentLoaded', function() {
         const upCount = states.reduce((a, b) => a + b, 0);
 
         // Check for most specific gestures first to avoid conflicts
-        if (states[1] && states[2] && !states[0] && !states[3] && !states[4]) return 'Peace';
-        if (states[1] && !states[0] && !states[2] && !states[3] && !states[4]) return 'Point';
+        if (states[0] && !states[1] && !states[2] && !states[3] && !states[4]) return 'Thumbs_Up'; // Fan On
+        if (states[0] && states[4] && !states[1] && !states[2] && !states[3]) return 'Shaka'; // Fan Off
+        if (states[1] && states[2] && !states[0] && !states[3] && !states[4]) return 'Peace'; // Lights On
+        if (states[1] && !states[0] && !states[2] && !states[3] && !states[4]) return 'Point'; // Lights Off
         
         // Then check for general gestures
-        if (upCount >= 4) return 'Open';
-        if (upCount === 0) return 'Fist';
+        if (upCount >= 4) return 'Open'; // Gate Open
+        if (upCount === 0) return 'Fist'; // Gate Close
         
         return 'Other';
     }
     
-    function decideFanAction(perHandClasses) { const openCount = perHandClasses.filter(c => c === 'Open').length; const fistCount = perHandClasses.filter(c => c === 'Fist').length; if (openCount === 2) return 'ON'; if (fistCount === 2) return 'OFF'; return ''; }
-    function decideSingleHandAction(perHandClasses) {
-        const handState = perHandClasses[0];
-        if (handState === 'Open') return 'OPEN_GATE';
-        if (handState === 'Fist') return 'CLOSE_GATE';
-        if (handState === 'Peace') return 'LIGHTS_ON';
-        if (handState === 'Point') return 'LIGHTS_OFF';
-        return '';
-    }
-
     function onResults(results) {
         const now = Date.now();
         if (now - lastFetchTime > FETCH_INTERVAL) { fetchSensorData(); lastFetchTime = now; }
@@ -323,68 +309,74 @@ document.addEventListener('DOMContentLoaded', function() {
         canvasCtx.scale(-1, 1);
         canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
         
-        const perHandClasses = [];
-        const currentHandCount = results.multiHandLandmarks ? results.multiHandLandmarks.length : 0;
+        // --- SIMPLIFIED LOGIC: Only process if exactly ONE hand is detected ---
+        if (results.multiHandLandmarks && results.multiHandLandmarks.length === 1) {
+            const landmarks = results.multiHandLandmarks[0];
+            const handedness = results.multiHandedness[0];
+            drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, { color: '#00FF00', lineWidth: 5 });
+            drawLandmarks(canvasCtx, landmarks, { color: '#FF0000', lineWidth: 2 });
+            
+            const currentAction = classifyHand(landmarks, handedness.label);
+            actionWindow.push(currentAction);
+            if (actionWindow.length > WINDOW_SIZE) actionWindow.shift();
 
-        if (currentHandCount > 0) {
-            for (let i = 0; i < currentHandCount; i++) {
-                const landmarks = results.multiHandLandmarks[i];
-                const handedness = results.multiHandedness[i];
-                drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, { color: '#00FF00', lineWidth: 5 });
-                drawLandmarks(canvasCtx, landmarks, { color: '#FF0000', lineWidth: 2 });
-                perHandClasses.push(classifyHand(landmarks, handedness.label));
-            }
-        }
-        
-        // --- NEW: AGGRESSIVE STATE RESET ---
-        // If the number of hands on screen has changed, wipe all history to prevent confusion.
-        if (currentHandCount !== previousHandCount) {
-            console.log(`Hand count changed from ${previousHandCount} to ${currentHandCount}. Resetting all gesture windows.`);
-            fanActionWindow = [];
-            singleHandActionWindow = [];
-            lastStableFanAction = '';
-            lastStableSingleHandAction = '';
-        }
-        previousHandCount = currentHandCount; // Update for the next frame
-
-        // --- Process current frame's gestures ---
-        if (currentHandCount === 2) {
-            const fanActionNow = decideFanAction(perHandClasses);
-            fanActionWindow.push(fanActionNow || '');
-            if (fanActionWindow.length > WINDOW_SIZE) fanActionWindow.shift();
-        } else if (currentHandCount === 1) {
-            const singleHandActionNow = decideSingleHandAction(perHandClasses);
-            singleHandActionWindow.push(singleHandActionNow || '');
-            if (singleHandActionWindow.length > WINDOW_SIZE) singleHandActionWindow.shift();
+        } else {
+            // If zero or more than one hand is detected, clear the window
+            actionWindow = [];
+            lastStableAction = '';
         }
 
         // --- Stabilize and Send Commands ---
-        const fanCounts = fanActionWindow.reduce((acc, val) => { if (val) acc[val] = (acc[val] || 0) + 1; return acc; }, {});
-        let stableFanAction = '';
-        if (Object.keys(fanCounts).length > 0) { const topAction = Object.keys(fanCounts).reduce((a, b) => fanCounts[a] > fanCounts[b] ? a : b); if (fanCounts[topAction] >= Math.floor(REQUIRED_FRACTION * fanActionWindow.length)) stableFanAction = topAction; }
-        if (stableFanAction && stableFanAction !== lastStableFanAction) {
-            lastStableFanAction = stableFanAction;
-            sendGestureCommand('/gesture_command', stableFanAction);
-        } else if (!stableFanAction) { lastStableFanAction = ''; }
-        
-        const singleHandCounts = singleHandActionWindow.reduce((acc, val) => { if (val) acc[val] = (acc[val] || 0) + 1; return acc; }, {});
-        let stableSingleHandAction = '';
-        if (Object.keys(singleHandCounts).length > 0) { const topAction = Object.keys(singleHandCounts).reduce((a, b) => singleHandCounts[a] > singleHandCounts[b] ? a : b); if (singleHandCounts[topAction] >= Math.floor(REQUIRED_FRACTION * singleHandActionWindow.length)) stableSingleHandAction = topAction; }
-        if (stableSingleHandAction && stableSingleHandAction !== lastStableSingleHandAction) {
-            lastStableSingleHandAction = stableSingleHandAction;
-            if (stableSingleHandAction.includes('GATE')) sendGestureCommand('/gate_gesture_command', stableSingleHandAction);
-            else if (stableSingleHandAction.includes('LIGHTS')) sendGestureCommand('/light_gesture_command', stableSingleHandAction);
-        } else if (!stableSingleHandAction) { lastStableSingleHandAction = ''; }
-
-        // --- CONTEXT-AWARE DISPLAY LOGIC ---
-        let displayText = '';
-        if (currentHandCount === 2 && lastStableFanAction) { displayText = lastStableFanAction === 'ON' ? 'ALL DEVICES ON' : 'ALL DEVICES OFF'; }
-        else if (currentHandCount === 1 && lastStableSingleHandAction) {
-            if(lastStableSingleHandAction === 'OPEN_GATE') displayText = 'GATE OPEN';
-            else if(lastStableSingleHandAction === 'CLOSE_GATE') displayText = 'GATE CLOSE';
-            else if(lastStableSingleHandAction === 'LIGHTS_ON') displayText = 'LIGHTS ON';
-            else if(lastStableSingleHandAction === 'LIGHTS_OFF') displayText = 'LIGHTS OFF';
+        const actionCounts = actionWindow.reduce((acc, val) => { if (val !== 'Other') acc[val] = (acc[val] || 0) + 1; return acc; }, {});
+        let stableAction = '';
+        if (Object.keys(actionCounts).length > 0) {
+            const topAction = Object.keys(actionCounts).reduce((a, b) => actionCounts[a] > actionCounts[b] ? a : b);
+            if (actionCounts[topAction] >= Math.floor(REQUIRED_FRACTION * actionWindow.length)) {
+                stableAction = topAction;
+            }
         }
+        
+        if (stableAction && stableAction !== lastStableAction) {
+            lastStableAction = stableAction;
+            
+            // Route the stable action to the correct endpoint and command
+            switch(stableAction) {
+                case 'Thumbs_Up':
+                    sendGestureCommand('/gesture_command', 'ON');
+                    break;
+                case 'Shaka':
+                    sendGestureCommand('/gesture_command', 'OFF');
+                    break;
+                case 'Open':
+                    sendGestureCommand('/gate_gesture_command', 'OPEN_GATE');
+                    break;
+                case 'Fist':
+                    sendGestureCommand('/gate_gesture_command', 'CLOSE_GATE');
+                    break;
+                case 'Peace':
+                    sendGestureCommand('/light_gesture_command', 'LIGHTS_ON');
+                    break;
+                case 'Point':
+                    sendGestureCommand('/light_gesture_command', 'LIGHTS_OFF');
+                    break;
+            }
+        } else if (!stableAction) {
+            lastStableAction = '';
+        }
+
+        // --- Display Logic ---
+        let displayText = '';
+        if (lastStableAction) {
+            switch(lastStableAction) {
+                case 'Thumbs_Up': displayText = 'FAN ON'; break;
+                case 'Shaka': displayText = 'FAN OFF'; break;
+                case 'Open': displayText = 'GATE OPEN'; break;
+                case 'Fist': displayText = 'GATE CLOSE'; break;
+                case 'Peace': displayText = 'LIGHTS ON'; break;
+                case 'Point': displayText = 'LIGHTS OFF'; break;
+            }
+        }
+
         if (displayText) {
             canvasCtx.scale(-1, 1);
             canvasCtx.fillStyle = "red";
@@ -396,7 +388,12 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     const hands = new Hands({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}` });
-    hands.setOptions({ maxNumHands: 2, modelComplexity: 1, minDetectionConfidence: 0.7, minTrackingConfidence: 0.7 });
+    hands.setOptions({ 
+        maxNumHands: 1, // --- IMPORTANT: Force the model to only look for ONE hand ---
+        modelComplexity: 1, 
+        minDetectionConfidence: 0.6, // Slightly lowered for faster initial detection
+        minTrackingConfidence: 0.6
+    });
     hands.onResults(onResults);
     
     const camera = new Camera(videoElement, { onFrame: async () => await hands.send({ image: videoElement }), width: 480, height: 360 });

@@ -203,6 +203,7 @@
 
 //above code is only for gate now below i have integrated light control 
 // script.js (Updated for Light Control)
+// script.js (Corrected for Speed and Stability)
 
 document.addEventListener('DOMContentLoaded', function() {
 
@@ -247,26 +248,26 @@ document.addEventListener('DOMContentLoaded', function() {
     function stopRecording() { if (mediaRecorder) { mediaRecorder.stop(); voiceStatus.textContent = 'Status: Processing...'; mediaRecorder = null; } }
     async function sendAudioToServer(audioBlob) { const formData = new FormData(); formData.append('audio_data', audioBlob, 'recording.wav'); const controller = new AbortController(); const timeoutId = setTimeout(() => controller.abort(), 15000); try { const response = await fetch('/process_audio', { method: 'POST', body: formData, signal: controller.signal }); clearTimeout(timeoutId); if (!response.ok) throw new Error(`Server error: ${response.status}`); const result = await response.json(); voiceStatus.textContent = `Recognized: "${result.text}"`; } catch (err) { if (err.name === 'AbortError') { voiceStatus.textContent = 'Status: Request timed out. Try again.'; } else { voiceStatus.textContent = 'Error: Failed to process audio.'; } console.error("Error sending audio to server:", err); } finally { startRecordingButton.disabled = false; stopRecordingButton.disabled = true; } }
 
-    // --- PART 5: MEDIAPIPE GESTURE RECOGNITION (UPDATED FOR LIGHTS) ---
+    // --- PART 5: MEDIAPIPE GESTURE RECOGNITION (UPDATED FOR STABILITY & SPEED) ---
     const TIP_IDS = [4, 8, 12, 16, 20];
-    const WINDOW_SIZE = 15;
-    const REQUIRED_FRACTION = 0.8;
+    const WINDOW_SIZE = 10;           // Faster response window
+    const REQUIRED_FRACTION = 0.7;    // Balanced strictness
     
-    // Action windows for each mode
     let fanActionWindow = [];
-    let singleHandActionWindow = []; // This will now handle both Gate and Lights
-
-    // State variables
+    let singleHandActionWindow = [];
     let lastStableFanAction = '';
     let lastStableSingleHandAction = '';
-    let lastCommandTime = 0; // A single cooldown timer for all gestures
+    let lastCommandTime = 0;
+    const COMMAND_COOLDOWN = 2500; // 2.5 second cooldown
     
+    // --- NEW: State tracker to detect changes in hand count ---
+    let previousHandCount = 0;
+
     let lastFetchTime = 0;
     const FETCH_INTERVAL = 2000;
     
-    // Generic command sender
     function sendGestureCommand(endpoint, action) {
-        if (Date.now() - lastCommandTime < 3000) return;
+        if (Date.now() - lastCommandTime < COMMAND_COOLDOWN) return;
         lastCommandTime = Date.now();
         console.log(`Sending command to ${endpoint}: ${action}`);
         fetch(endpoint, { 
@@ -276,21 +277,33 @@ document.addEventListener('DOMContentLoaded', function() {
         }).catch(err => console.error(`Error sending gesture command to ${endpoint}:`, err));
     }
 
-    // UPDATED: Classify hand to include Point and Peace gestures
-    function classifyHand(landmarks, handedLabel) {
-        const upCount = fingerStates(landmarks, handedLabel).reduce((a, b) => a + b, 0);
-        if (upCount >= 4) return 'Open';
-        if (upCount === 0) return 'Fist';
-        if (upCount === 2) return 'Peace'; // Lights ON
-        if (upCount === 1) return 'Point'; // Lights OFF
-        return 'Other';
+    // --- REWRITTEN: More accurate finger state detection ---
+    function fingerStates(landmarks, handedLabel) {
+        const fingers = [0, 0, 0, 0, 0]; // Thumb, Index, Middle, Ring, Pinky
+        fingers[0] = (handedLabel.toLowerCase() === 'right' ? landmarks[TIP_IDS[0]].x < landmarks[TIP_IDS[0] - 1].x : landmarks[TIP_IDS[0]].x > landmarks[TIP_IDS[0] - 1].x) ? 1 : 0;
+        for (let i = 1; i < 5; i++) {
+            fingers[i] = (landmarks[TIP_IDS[i]].y < landmarks[TIP_IDS[i] - 2].y) ? 1 : 0;
+        }
+        return fingers;
     }
 
-    function fingerStates(landmarks, handedLabel) { const fingers = [0, 0, 0, 0, 0]; const thumbTip = landmarks[TIP_IDS[0]]; const thumbIp = landmarks[TIP_IDS[0] - 1]; fingers[0] = (handedLabel === 'Right' ? thumbTip.x < thumbIp.x : thumbTip.x > thumbIp.x) ? 1 : 0; for (let i = 1; i < 5; i++) { fingers[i] = (landmarks[TIP_IDS[i]].y < landmarks[TIP_IDS[i] - 2].y) ? 1 : 0; } return fingers; }
+    // --- REWRITTEN: More specific gesture classification ---
+    function classifyHand(landmarks, handedLabel) {
+        const states = fingerStates(landmarks, handedLabel);
+        const upCount = states.reduce((a, b) => a + b, 0);
+
+        // Check for most specific gestures first to avoid conflicts
+        if (states[1] && states[2] && !states[0] && !states[3] && !states[4]) return 'Peace';
+        if (states[1] && !states[0] && !states[2] && !states[3] && !states[4]) return 'Point';
+        
+        // Then check for general gestures
+        if (upCount >= 4) return 'Open';
+        if (upCount === 0) return 'Fist';
+        
+        return 'Other';
+    }
     
     function decideFanAction(perHandClasses) { const openCount = perHandClasses.filter(c => c === 'Open').length; const fistCount = perHandClasses.filter(c => c === 'Fist').length; if (openCount === 2) return 'ON'; if (fistCount === 2) return 'OFF'; return ''; }
-    
-    // UPDATED: Decide action for a single hand (Gate or Light)
     function decideSingleHandAction(perHandClasses) {
         const handState = perHandClasses[0];
         if (handState === 'Open') return 'OPEN_GATE';
@@ -311,8 +324,10 @@ document.addEventListener('DOMContentLoaded', function() {
         canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
         
         const perHandClasses = [];
-        if (results.multiHandLandmarks) {
-            for (let i = 0; i < results.multiHandLandmarks.length; i++) {
+        const currentHandCount = results.multiHandLandmarks ? results.multiHandLandmarks.length : 0;
+
+        if (currentHandCount > 0) {
+            for (let i = 0; i < currentHandCount; i++) {
                 const landmarks = results.multiHandLandmarks[i];
                 const handedness = results.multiHandedness[i];
                 drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, { color: '#00FF00', lineWidth: 5 });
@@ -321,67 +336,55 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
         
-        // --- STRICT, MUTUALLY EXCLUSIVE GESTURE PROCESSING ---
-        let currentMode = 'NONE';
-        if (perHandClasses.length === 1) currentMode = 'SINGLE';
-        else if (perHandClasses.length === 2) currentMode = 'DUAL';
+        // --- NEW: AGGRESSIVE STATE RESET ---
+        // If the number of hands on screen has changed, wipe all history to prevent confusion.
+        if (currentHandCount !== previousHandCount) {
+            console.log(`Hand count changed from ${previousHandCount} to ${currentHandCount}. Resetting all gesture windows.`);
+            fanActionWindow = [];
+            singleHandActionWindow = [];
+            lastStableFanAction = '';
+            lastStableSingleHandAction = '';
+        }
+        previousHandCount = currentHandCount; // Update for the next frame
 
-        if (currentMode === 'DUAL') {
+        // --- Process current frame's gestures ---
+        if (currentHandCount === 2) {
             const fanActionNow = decideFanAction(perHandClasses);
             fanActionWindow.push(fanActionNow || '');
             if (fanActionWindow.length > WINDOW_SIZE) fanActionWindow.shift();
-            singleHandActionWindow = []; lastStableSingleHandAction = ''; // Force reset
-        } else if (currentMode === 'SINGLE') {
+        } else if (currentHandCount === 1) {
             const singleHandActionNow = decideSingleHandAction(perHandClasses);
             singleHandActionWindow.push(singleHandActionNow || '');
             if (singleHandActionWindow.length > WINDOW_SIZE) singleHandActionWindow.shift();
-            fanActionWindow = []; lastStableFanAction = ''; // Force reset
-        } else {
-            lastStableFanAction = '';
-            lastStableSingleHandAction = '';
         }
 
         // --- Stabilize and Send Commands ---
         const fanCounts = fanActionWindow.reduce((acc, val) => { if (val) acc[val] = (acc[val] || 0) + 1; return acc; }, {});
         let stableFanAction = '';
-        if (Object.keys(fanCounts).length > 0) {
-            const topAction = Object.keys(fanCounts).reduce((a, b) => fanCounts[a] > fanCounts[b] ? a : b);
-            if (fanCounts[topAction] >= Math.floor(REQUIRED_FRACTION * fanActionWindow.length)) stableFanAction = topAction;
-        }
+        if (Object.keys(fanCounts).length > 0) { const topAction = Object.keys(fanCounts).reduce((a, b) => fanCounts[a] > fanCounts[b] ? a : b); if (fanCounts[topAction] >= Math.floor(REQUIRED_FRACTION * fanActionWindow.length)) stableFanAction = topAction; }
         if (stableFanAction && stableFanAction !== lastStableFanAction) {
             lastStableFanAction = stableFanAction;
             sendGestureCommand('/gesture_command', stableFanAction);
-            singleHandActionWindow = []; // Clear other window on successful command
         } else if (!stableFanAction) { lastStableFanAction = ''; }
         
         const singleHandCounts = singleHandActionWindow.reduce((acc, val) => { if (val) acc[val] = (acc[val] || 0) + 1; return acc; }, {});
         let stableSingleHandAction = '';
-        if (Object.keys(singleHandCounts).length > 0) {
-            const topAction = Object.keys(singleHandCounts).reduce((a, b) => singleHandCounts[a] > singleHandCounts[b] ? a : b);
-            if (singleHandCounts[topAction] >= Math.floor(REQUIRED_FRACTION * singleHandActionWindow.length)) stableSingleHandAction = topAction;
-        }
+        if (Object.keys(singleHandCounts).length > 0) { const topAction = Object.keys(singleHandCounts).reduce((a, b) => singleHandCounts[a] > singleHandCounts[b] ? a : b); if (singleHandCounts[topAction] >= Math.floor(REQUIRED_FRACTION * singleHandActionWindow.length)) stableSingleHandAction = topAction; }
         if (stableSingleHandAction && stableSingleHandAction !== lastStableSingleHandAction) {
             lastStableSingleHandAction = stableSingleHandAction;
-            // Route to the correct endpoint
-            if (stableSingleHandAction.includes('GATE')) {
-                sendGestureCommand('/gate_gesture_command', stableSingleHandAction);
-            } else if (stableSingleHandAction.includes('LIGHTS')) {
-                sendGestureCommand('/light_gesture_command', stableSingleHandAction);
-            }
-            fanActionWindow = []; // Clear other window on successful command
+            if (stableSingleHandAction.includes('GATE')) sendGestureCommand('/gate_gesture_command', stableSingleHandAction);
+            else if (stableSingleHandAction.includes('LIGHTS')) sendGestureCommand('/light_gesture_command', stableSingleHandAction);
         } else if (!stableSingleHandAction) { lastStableSingleHandAction = ''; }
 
         // --- CONTEXT-AWARE DISPLAY LOGIC ---
         let displayText = '';
-        if (currentMode === 'DUAL' && lastStableFanAction) {
-            displayText = lastStableFanAction === 'ON' ? 'ALL DEVICES ON' : 'ALL DEVICES OFF';
-        } else if (currentMode === 'SINGLE' && lastStableSingleHandAction) {
+        if (currentHandCount === 2 && lastStableFanAction) { displayText = lastStableFanAction === 'ON' ? 'ALL DEVICES ON' : 'ALL DEVICES OFF'; }
+        else if (currentHandCount === 1 && lastStableSingleHandAction) {
             if(lastStableSingleHandAction === 'OPEN_GATE') displayText = 'GATE OPEN';
             else if(lastStableSingleHandAction === 'CLOSE_GATE') displayText = 'GATE CLOSE';
             else if(lastStableSingleHandAction === 'LIGHTS_ON') displayText = 'LIGHTS ON';
             else if(lastStableSingleHandAction === 'LIGHTS_OFF') displayText = 'LIGHTS OFF';
         }
-
         if (displayText) {
             canvasCtx.scale(-1, 1);
             canvasCtx.fillStyle = "red";
@@ -389,7 +392,6 @@ document.addEventListener('DOMContentLoaded', function() {
             canvasCtx.textAlign = "center";
             canvasCtx.fillText(displayText, -canvasElement.width / 2, 40);
         }
-
         canvasCtx.restore();
     }
     

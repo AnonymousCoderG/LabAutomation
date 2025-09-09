@@ -1,4 +1,4 @@
-# app.py
+# app.py (Corrected)
 
 import eventlet
 eventlet.monkey_patch()
@@ -31,7 +31,6 @@ MQTT_COMMAND_TOPIC = "home/room/command"
 MQTT_GATE_COMMAND_TOPIC = "home/room/gate"
 MQTT_SENSOR_TOPIC = "home/room/sensors"
 
-
 # ------------------- MQTT LISTENER (for sensor data) -------------------
 listener_mqtt_client = mqtt.Client()
 
@@ -53,23 +52,35 @@ def on_message(client, userdata, msg):
     except Exception as e:
         print(f"Error processing MQTT message or writing to file: {e}")
 
-def mqtt_listener_thread():
+# --- UPDATED: NON-BLOCKING MQTT LISTENER ---
+def mqtt_listener_setup():
+    """
+    Sets up and connects the MQTT client, then starts a non-blocking loop.
+    This is designed to be run once in a background thread.
+    """
     listener_mqtt_client.username_pw_set(MQTT_USERNAME, MQTT_PASSWORD)
     listener_mqtt_client.on_connect = on_connect
     listener_mqtt_client.on_message = on_message
     listener_mqtt_client.tls_set(tls_version=mqtt.ssl.PROTOCOL_TLS)
+    
     while True:
         try:
             print("Attempting to connect MQTT listener client...")
             listener_mqtt_client.connect(MQTT_BROKER_URL, MQTT_BROKER_PORT, 60)
-            listener_mqtt_client.loop_forever()
+            # Use loop_start() instead of loop_forever()
+            # loop_start() runs in a background thread and is non-blocking.
+            listener_mqtt_client.loop_start()
+            break # Exit the loop once connection is successful and loop has started
         except Exception as e:
             print(f"MQTT listener connection failed: {e}. Retrying in 5 seconds...")
             time.sleep(5)
 
-mqtt_thread = threading.Thread(target=mqtt_listener_thread, daemon=True)
+# Start the MQTT listener setup in a daemon thread
+mqtt_thread = threading.Thread(target=mqtt_listener_setup, daemon=True)
 mqtt_thread.start()
 
+
+# --- Robust command sender (Unchanged) ---
 def send_command_robust(topic: str, command: str):
     try:
         print(f"Attempting to send command '{command}' to topic '{topic}'")
@@ -87,10 +98,11 @@ def send_command_robust(topic: str, command: str):
     except Exception as e:
         print(f"FAILED to publish command to MQTT: {e}")
 
+# --- Create temp audio directory (Unchanged) ---
 if not os.path.exists("temp_audio"):
     os.makedirs("temp_audio")
 
-# ---------------- FLASK ENDPOINTS ----------------
+# ---------------- FLASK ENDPOINTS (Unchanged) ----------------
 @app.route('/send_command', methods=['POST'])
 def send_command():
     command_val = request.form.get("command", "1")
@@ -164,5 +176,6 @@ def get_initial_data():
 def home():
     return render_template("index.html")
 
+# ---------------- MAIN (Unchanged) ----------------
 if __name__ == '__main__':
-    socketio.run(app, host="0.0.0.0", port=5000, debug=False)
+    socketio.run(app, host="[::]", port=5000, debug=False)

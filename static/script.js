@@ -408,12 +408,9 @@
 // });
 
 
-
-//above code is of last rebased commit change gesture fan on and off
-
 document.addEventListener('DOMContentLoaded', function() {
 
-    // --- PART 1, 2, 3, 4: Setup, UI, Sensors, and Voice (Largely Unchanged) ---
+    // --- PART 1, 2, 3, 4: Setup, UI, Sensors, and Voice (Unchanged) ---
     const b = document.body;
     const h = document.querySelector("#h");
     const leftPanel = document.querySelector(".left-panel");
@@ -452,22 +449,23 @@ document.addEventListener('DOMContentLoaded', function() {
     function stopRecording() { if (mediaRecorder) { mediaRecorder.stop(); voiceStatus.textContent = 'Status: Processing...'; mediaRecorder = null; } }
     async function sendAudioToServer(audioBlob) { const formData = new FormData(); formData.append('audio_data', audioBlob, 'recording.wav'); const controller = new AbortController(); const timeoutId = setTimeout(() => controller.abort(), 15000); try { const response = await fetch('/process_audio', { method: 'POST', body: formData, signal: controller.signal }); clearTimeout(timeoutId); if (!response.ok) throw new Error(`Server error: ${response.status}`); const result = await response.json(); voiceStatus.textContent = `Recognized: "${result.text}"`; } catch (err) { if (err.name === 'AbortError') { voiceStatus.textContent = 'Status: Request timed out. Try again.'; } else { voiceStatus.textContent = 'Error: Failed to process audio.'; } console.error("Error sending audio to server:", err); } finally { startRecordingButton.disabled = false; stopRecordingButton.disabled = true; } }
 
-    // --- PART 5: MEDIAPIPE GESTURE RECOGNITION (RE-ENGINEERED) ---
+    // --- PART 5: MEDIAPIPE GESTURE RECOGNITION (RE-ENGINEERED FOR STABILITY) ---
     const TIP_IDS = [4, 8, 12, 16, 20];
-    const WINDOW_SIZE = 15;        // How many recent frames to consider for stability.
-    const REQUIRED_FRACTION = 0.8; // A gesture must be present in 80% of frames in the window.
     
+    // --- STABILITY CONTROLS ---
+    const WINDOW_SIZE = 20;           // Increased: Must hold pose for more frames.
+    const REQUIRED_FRACTION = 0.90;   // Increased: 90% of frames in the window must match.
+    const COMMAND_COOLDOWN = 3000;    // Increased: 3-second delay between commands.
+
     let actionWindow = [];
     let lastStableAction = '';
     let lastCommandTime = 0;
-    // FIX: A cooldown to prevent the system from sending rapid-fire commands.
-    const COMMAND_COOLDOWN = 2500; // 2.5 seconds
+    let lastAction = 'none'; // <-- NEW: Tracks the very last detected action frame-by-frame.
 
     let lastFetchTime = 0;
     const FETCH_INTERVAL = 2000;
     
     function sendGestureCommand(endpoint, action) {
-        // Enforce the cooldown.
         if (Date.now() - lastCommandTime < COMMAND_COOLDOWN) {
             console.log("Command blocked by cooldown.");
             return;
@@ -481,33 +479,29 @@ document.addEventListener('DOMContentLoaded', function() {
         }).catch(err => console.error(`Error sending gesture command to ${endpoint}:`, err));
     }
 
+    // This function is unchanged as the gesture definitions are correct.
     function fingerStates(landmarks, handedLabel) {
         const fingers = [0, 0, 0, 0, 0]; // Thumb, Index, Middle, Ring, Pinky
-        // Thumb: Checks x-coordinate relative to the next joint.
         fingers[0] = (handedLabel.toLowerCase() === 'right' ? landmarks[TIP_IDS[0]].x < landmarks[TIP_IDS[0] - 1].x : landmarks[TIP_IDS[0]].x > landmarks[TIP_IDS[0] - 1].x) ? 1 : 0;
-        // Other 4 fingers: Check y-coordinate. Tip must be above the joint 2 knuckles down.
         for (let i = 1; i < 5; i++) {
             fingers[i] = (landmarks[TIP_IDS[i]].y < landmarks[TIP_IDS[i] - 2].y) ? 1 : 0;
         }
         return fingers;
     }
 
-    // --- REFINED: More distinct gesture classification logic ---
+    // This function is unchanged as per your request.
     function classifyHand(landmarks, handedLabel) {
         const states = fingerStates(landmarks, handedLabel);
         const upCount = states.reduce((a, b) => a + b, 0);
 
-        // Check for the most specific/unique gestures first to avoid misclassification.
         if (states[0] && !states[1] && !states[2] && !states[3] && !states[4]) return 'Thumbs_Up'; // Fan On
-        if (states[0] && states[4] && !states[1] && !states[2] && !states[3]) return 'Shaka';       // Fan Off
-        if (states[1] && states[2] && !states[0] && !states[3] && !states[4]) return 'Peace';       // Lights On
-        if (states[1] && !states[0] && !states[2] && !states[3] && !states[4]) return 'Point';       // Lights Off
-        
-        // Then check for the more general "all fingers up" or "all fingers down" gestures.
+        if (states[0] && states[4] && !states[1] && !states[2] && !states[3]) return 'Shaka'; // Fan Off
+        if (states[1] && states[2] && !states[0] && !states[3] && !states[4]) return 'Peace'; // Lights On
+        if (states[1] && !states[0] && !states[2] && !states[3] && !states[4]) return 'Point'; // Lights Off
         if (upCount >= 4) return 'Open'; // Gate Open
         if (upCount === 0) return 'Fist'; // Gate Close
         
-        return 'Other'; // If it's none of the above.
+        return 'Other';
     }
     
     function onResults(results) {
@@ -520,41 +514,55 @@ document.addEventListener('DOMContentLoaded', function() {
         canvasCtx.scale(-1, 1);
         canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
         
-        // FIX: Only process gestures if EXACTLY one hand is detected.
         if (results.multiHandLandmarks && results.multiHandLandmarks.length === 1) {
             const landmarks = results.multiHandLandmarks[0];
             const handedness = results.multiHandedness[0];
             drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, { color: '#00FF00', lineWidth: 5 });
             drawLandmarks(canvasCtx, landmarks, { color: '#FF0000', lineWidth: 2 });
             
-            // Add the currently detected action to our history window.
             const currentAction = classifyHand(landmarks, handedness.label);
+            
+            // --- CORE STABILITY FIX ---
+            // If the user changes their hand shape, reset the entire stability window.
+            // This stops misfires during gesture transitions.
+            if (currentAction !== lastAction) {
+                actionWindow = [];
+                // console.log(`Gesture changed from ${lastAction} to ${currentAction}. Window reset.`);
+            }
+            lastAction = currentAction; // Update the last seen action.
+
             actionWindow.push(currentAction);
-            if (actionWindow.length > WINDOW_SIZE) actionWindow.shift();
+            if (actionWindow.length > WINDOW_SIZE) {
+                actionWindow.shift();
+            }
 
         } else {
-            // FIX: If zero or more than one hand is seen, clear the history.
-            // This prevents an old gesture from being triggered when a hand reappears.
+            // If no hands (or multiple hands) are detected, keep clearing the window.
             actionWindow = [];
-            lastStableAction = '';
+            lastAction = 'none';
         }
 
-        // --- Stabilize the action and decide whether to send a command ---
-        const actionCounts = actionWindow.reduce((acc, val) => { if (val !== 'Other') acc[val] = (acc[val] || 0) + 1; return acc; }, {});
+        // --- Stabilize and Send Commands ---
         let stableAction = '';
-        if (Object.keys(actionCounts).length > 0) {
-            const topAction = Object.keys(actionCounts).reduce((a, b) => actionCounts[a] > actionCounts[b] ? a : b);
-            // Check if the most common action in the window meets our stability requirement.
-            if (actionCounts[topAction] >= Math.floor(REQUIRED_FRACTION * actionWindow.length)) {
-                stableAction = topAction;
+        if (actionWindow.length === WINDOW_SIZE) { // Only check for stability if the window is full.
+            const actionCounts = actionWindow.reduce((acc, val) => {
+                if (val !== 'Other') acc[val] = (acc[val] || 0) + 1;
+                return acc;
+            }, {});
+
+            if (Object.keys(actionCounts).length > 0) {
+                const topAction = Object.keys(actionCounts).reduce((a, b) => actionCounts[a] > actionCounts[b] ? a : b);
+                
+                // Check if the most frequent action meets the high threshold.
+                if (actionCounts[topAction] >= Math.floor(REQUIRED_FRACTION * WINDOW_SIZE)) {
+                    stableAction = topAction;
+                }
             }
         }
         
-        // Only send a command if we have a NEW stable action.
         if (stableAction && stableAction !== lastStableAction) {
             lastStableAction = stableAction;
             
-            // Route the stable action to the correct endpoint.
             switch(stableAction) {
                 case 'Thumbs_Up': sendGestureCommand('/gesture_command', 'ON'); break;
                 case 'Shaka': sendGestureCommand('/gesture_command', 'OFF'); break;
@@ -564,11 +572,10 @@ document.addEventListener('DOMContentLoaded', function() {
                 case 'Point': sendGestureCommand('/light_gesture_command', 'LIGHTS_OFF'); break;
             }
         } else if (!stableAction) {
-            // If the gesture is no longer stable, reset our state.
             lastStableAction = '';
         }
 
-        // --- Display the currently recognized stable action on screen ---
+        // --- Display Logic ---
         let displayText = '';
         if (lastStableAction) {
             switch(lastStableAction) {
@@ -591,14 +598,14 @@ document.addEventListener('DOMContentLoaded', function() {
         canvasCtx.restore();
     }
     
-    const hands = new Hands({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}` });
+    const hands = new Hands({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediappe/hands/${file}` });
     hands.setOptions({ 
-        // FIX: This is the most important setting. It tells the AI to only look for
-        // the single most prominent hand, solving the "two hands" problem.
-        maxNumHands: 1, 
+        maxNumHands: 1,
         modelComplexity: 1, 
-        minDetectionConfidence: 0.7,
-        minTrackingConfidence: 0.7
+        // --- CONFIDENCE FIX ---
+        // Increased confidence to prevent detection of blurry/unclear hands.
+        minDetectionConfidence: 0.8,
+        minTrackingConfidence: 0.8
     });
     hands.onResults(onResults);
     
